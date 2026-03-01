@@ -90,7 +90,7 @@ enum RaceCalculator {
     ///   - dropSeconds: Seconds faster per split (positive value = each split is faster)
     /// - Returns: Array of (splitDistance, splitSeconds) tuples
     static func negativeSplits(totalSeconds: Int, distanceInUnits: Double, dropSeconds: Double) -> [(distance: Double, seconds: Int)] {
-        guard distanceInUnits > 0, totalSeconds > 0 else { return [] }
+        guard distanceInUnits > 0, totalSeconds > 0, dropSeconds >= 0 else { return [] }
 
         let fullSplits = Int(distanceInUnits)
         let partial = distanceInUnits - Double(fullSplits)
@@ -110,8 +110,10 @@ enum RaceCalculator {
 
         guard effectiveDistance > 0 else { return [] }
         let basePace = (Double(totalSeconds) + dropSum) / effectiveDistance
+        guard basePace - Double(splitCount - 1) * dropSeconds > 0 else { return [] }
 
-        var results: [(distance: Double, seconds: Int)] = []
+        var distances: [Double] = []
+        var splitTimes: [Int] = []
         for i in 0..<splitCount {
             let splitPace = basePace - Double(i) * dropSeconds
             let dist: Double
@@ -120,10 +122,27 @@ enum RaceCalculator {
             } else {
                 dist = 1.0
             }
-            let splitTime = Int(round(splitPace * dist))
-            results.append((distance: dist, seconds: max(splitTime, 1)))
+            let splitTime = max(Int(round(splitPace * dist)), 1)
+            distances.append(dist)
+            splitTimes.append(splitTime)
         }
 
-        return results
+        let difference = totalSeconds - splitTimes.reduce(0, +)
+        if difference > 0 {
+            splitTimes[splitTimes.count - 1] += difference
+        } else if difference < 0 {
+            var remaining = -difference
+            for index in stride(from: splitTimes.count - 1, through: 0, by: -1) {
+                let reducible = splitTimes[index] - 1
+                guard reducible > 0 else { continue }
+                let reduction = min(reducible, remaining)
+                splitTimes[index] -= reduction
+                remaining -= reduction
+                if remaining == 0 { break }
+            }
+            guard remaining == 0 else { return [] }
+        }
+
+        return zip(distances, splitTimes).map { (distance: $0.0, seconds: $0.1) }
     }
 }

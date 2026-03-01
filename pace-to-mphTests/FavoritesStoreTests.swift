@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import pace_to_mph
 
@@ -65,5 +66,22 @@ struct FavoritesStoreTests {
         store.add(input: "8:00", inputSuffix: "/mi", result: "7.50", resultSuffix: "MPH")
         store.clear()
         #expect(store.favorites.isEmpty)
+    }
+
+    @Test func customStorageIsolation() {
+        let suite1Name = "FavoritesStoreTests.suite1.\(UUID().uuidString)"
+        let suite2Name = "FavoritesStoreTests.suite2.\(UUID().uuidString)"
+        let suite1 = UserDefaults(suiteName: suite1Name)!
+        let suite2 = UserDefaults(suiteName: suite2Name)!
+        defer {
+            suite1.removePersistentDomain(forName: suite1Name)
+            suite2.removePersistentDomain(forName: suite2Name)
+        }
+
+        let first = FavoritesStore(userDefaults: suite1, storageKey: "favorites")
+        let second = FavoritesStore(userDefaults: suite2, storageKey: "favorites")
+        first.add(input: "8:00", inputSuffix: "/mi", result: "7.50", resultSuffix: "MPH")
+        #expect(first.favorites.count == 1)
+        #expect(second.favorites.isEmpty)
     }
 }

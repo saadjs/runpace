@@ -3,8 +3,9 @@ import Testing
 @testable import pace_to_mph
 
 struct IntentConversionRegressionTests {
-    private func unpack(_ result: some ReturnsValue<String> & ProvidesDialog) -> IntentResultContainer<String, Never, Never, IntentDialog> {
-        result as! IntentResultContainer<String, Never, Never, IntentDialog>
+    private func assertResult(_ result: some ReturnsValue<String>, value: String, dialogContains: String) {
+        #expect(result.value == value)
+        #expect(String(describing: result).contains(dialogContains))
     }
 
     @Test func paceToSpeedIntentForMph() async throws {
@@ -12,9 +13,8 @@ struct IntentConversionRegressionTests {
         intent.pace = "8:00"
         intent.unit = .mph
 
-        let result = unpack(try await intent.perform())
-        #expect(result.value == "7.50")
-        #expect(String(describing: result.dialog).contains("per mile"))
+        let result = try await intent.perform()
+        assertResult(result, value: "7.50", dialogContains: "per mile")
     }
 
     @Test func paceToSpeedIntentForKph() async throws {
@@ -22,9 +22,8 @@ struct IntentConversionRegressionTests {
         intent.pace = "8:00"
         intent.unit = .kph
 
-        let result = unpack(try await intent.perform())
-        #expect(result.value == "7.50")
-        #expect(String(describing: result.dialog).contains("per kilometer"))
+        let result = try await intent.perform()
+        assertResult(result, value: "7.50", dialogContains: "per kilometer")
     }
 
     @Test func speedToPaceIntentForMph() async throws {
@@ -32,9 +31,8 @@ struct IntentConversionRegressionTests {
         intent.speed = 10
         intent.unit = .mph
 
-        let result = unpack(try await intent.perform())
-        #expect(result.value == "6:00")
-        #expect(String(describing: result.dialog).contains("/mi"))
+        let result = try await intent.perform()
+        assertResult(result, value: "6:00", dialogContains: "/mi")
     }
 
     @Test func speedToPaceIntentForKph() async throws {
@@ -42,8 +40,7 @@ struct IntentConversionRegressionTests {
         intent.speed = 12
         intent.unit = .kph
 
-        let result = unpack(try await intent.perform())
-        #expect(result.value == "5:00")
-        #expect(String(describing: result.dialog).contains("/km"))
+        let result = try await intent.perform()
+        assertResult(result, value: "5:00", dialogContains: "/km")
     }
 }

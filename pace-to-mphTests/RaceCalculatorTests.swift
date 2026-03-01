@@ -87,4 +87,11 @@ struct RaceCalculatorTests {
         #expect(RaceCalculator.negativeSplits(totalSeconds: 0, distanceInUnits: 3.0, dropSeconds: 5.0).isEmpty)
         #expect(RaceCalculator.negativeSplits(totalSeconds: 1800, distanceInUnits: 0, dropSeconds: 5.0).isEmpty)
     }
+
+    @Test func negativeSplitsLargeDropPreservesRequestedTotal() {
+        let splits = RaceCalculator.negativeSplits(totalSeconds: 60, distanceInUnits: 2.0, dropSeconds: 59)
+        #expect(splits.count == 2)
+        #expect(splits.reduce(0) { $0 + $1.seconds } == 60)
+        #expect(splits.allSatisfy { $0.seconds > 0 })
+    }
 }

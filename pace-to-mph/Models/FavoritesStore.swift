@@ -12,9 +12,14 @@ struct FavoriteConversion: Codable, Identifiable, Equatable {
 class FavoritesStore {
     private(set) var favorites: [FavoriteConversion] = []
     private let maxFavorites = 20
-    private let storageKey = "pinned_favorites"
+    private let storageKey: String
+    private let userDefaults: UserDefaults
     
-    init() { load() }
+    init(userDefaults: UserDefaults = .standard, storageKey: String = "pinned_favorites") {
+        self.userDefaults = userDefaults
+        self.storageKey = storageKey
+        load()
+    }
     
     // Add a favorite. Skip if duplicate (same input+inputSuffix+result+resultSuffix).
     func add(input: String, inputSuffix: String, result: String, resultSuffix: String) {
@@ -57,11 +62,11 @@ class FavoritesStore {
     
     private func save() {
         guard let data = try? JSONEncoder().encode(favorites) else { return }
-        UserDefaults.standard.set(data, forKey: storageKey)
+        userDefaults.set(data, forKey: storageKey)
     }
     
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
+        guard let data = userDefaults.data(forKey: storageKey),
               let decoded = try? JSONDecoder().decode([FavoriteConversion].self, from: data) else { return }
         favorites = decoded
     }
