@@ -138,4 +138,17 @@ struct RaceCalculatorTests {
                     "split \(i) (\(splits[i].seconds)s) must be <= split \(i-1) (\(splits[i-1].seconds)s)")
         }
     }
+
+    // Regression: when rounded splits overshoot the requested total, removing all excess
+    // from the first split can make it faster than the next split and incorrectly return
+    // no result. The correction should be spread across the earlier splits instead.
+    @Test func negativeSplitsDistributesOvershootAcrossEarlierSplits() {
+        let splits = RaceCalculator.negativeSplits(totalSeconds: 900, distanceInUnits: 3.10686, dropSeconds: 0.0)
+        #expect(splits.count == 4)
+        #expect(splits.reduce(0) { $0 + $1.seconds } == 900)
+        for i in 1..<splits.count {
+            #expect(splits[i].seconds <= splits[i - 1].seconds,
+                    "split \(i) (\(splits[i].seconds)s) must be <= split \(i-1) (\(splits[i-1].seconds)s)")
+        }
+    }
 }

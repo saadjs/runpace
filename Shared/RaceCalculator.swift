@@ -151,12 +151,19 @@ enum RaceCalculator {
             // Add rounding remainder to the first (slowest) split to preserve non-increasing order
             splitTimes[0] += difference
         } else if difference < 0 {
-            // Remove excess from the first (slowest) split to preserve strictly-decreasing order
-            splitTimes[0] += difference
-            guard splitTimes[0] >= 1 else { return [] }
-            // If reducing the first split made it strictly less than the second, splits are impossible;
-            // equal is acceptable — it's a rounding artifact, not an invalid case.
-            if splitTimes.count > 1 && splitTimes[0] < splitTimes[1] { return [] }
+            // Remove rounding overshoot from the end back toward the start. Each split can be
+            // reduced only down to the next split (or 1s for the final split) so the result
+            // stays non-increasing even when rounding produced equal adjacent splits.
+            var overshoot = -difference
+            for index in stride(from: splitTimes.count - 1, through: 0, by: -1) where overshoot > 0 {
+                let minimum = index == splitTimes.count - 1 ? 1 : splitTimes[index + 1]
+                let reducible = splitTimes[index] - minimum
+                guard reducible >= 0 else { return [] }
+                let adjustment = min(reducible, overshoot)
+                splitTimes[index] -= adjustment
+                overshoot -= adjustment
+            }
+            guard overshoot == 0 else { return [] }
         }
 
         return zip(distances, splitTimes).map { (distance: $0.0, seconds: $0.1) }
