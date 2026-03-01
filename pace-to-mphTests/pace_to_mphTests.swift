@@ -117,7 +117,7 @@ struct ConversionEngineTests {
     }
 
     @Test func convertDistanceInputBetweenUnitsReformatsEquivalentDistance() {
-        #expect(ConversionEngine.convertDistanceInput("3.11", from: .mph, to: .kph) == "5")
+        #expect(ConversionEngine.convertDistanceInput("3.11", from: .mph, to: .kph) == "5.01")
         #expect(ConversionEngine.convertDistanceInput("5", from: .kph, to: .mph) == "3.11")
     }
 
