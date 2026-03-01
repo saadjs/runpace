@@ -129,7 +129,8 @@ enum RaceCalculator {
 
         let difference = totalSeconds - splitTimes.reduce(0, +)
         if difference > 0 {
-            splitTimes[splitTimes.count - 1] += difference
+            // Add rounding remainder to the first (slowest) split to preserve non-increasing order
+            splitTimes[0] += difference
         } else if difference < 0 {
             var remaining = -difference
             for index in stride(from: splitTimes.count - 1, through: 0, by: -1) {

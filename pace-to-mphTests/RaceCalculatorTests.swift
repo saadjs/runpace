@@ -94,4 +94,17 @@ struct RaceCalculatorTests {
         #expect(splits.reduce(0) { $0 + $1.seconds } == 60)
         #expect(splits.allSatisfy { $0.seconds > 0 })
     }
+
+    // Regression: when rounding produces difference > 0, adding to the last (fastest)
+    // split can make it equal to or slower than the prior split (202s/6mi/1s drop → diff=1
+    // adds to last, making splits[5]==splits[4]==32). Should add to first split instead.
+    @Test func negativeSplitsRoundingPreservesStrictlyDecreasingOrder() {
+        let splits = RaceCalculator.negativeSplits(totalSeconds: 202, distanceInUnits: 6.0, dropSeconds: 1.0)
+        #expect(splits.count == 6)
+        #expect(splits.reduce(0) { $0 + $1.seconds } == 202)
+        for i in 1..<splits.count {
+            #expect(splits[i].seconds < splits[i - 1].seconds,
+                    "split \(i) (\(splits[i].seconds)s) must be faster than split \(i-1) (\(splits[i-1].seconds)s)")
+        }
+    }
 }
