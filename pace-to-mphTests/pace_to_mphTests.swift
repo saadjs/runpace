@@ -31,6 +31,12 @@ struct ConversionEngineTests {
         #expect(ConversionEngine.parsePace("0:00") == nil)
     }
 
+    @Test func parsePaceRejectsSecondsAbove59() {
+        #expect(ConversionEngine.parsePace("8:60") == nil)
+        #expect(ConversionEngine.parsePace("8:90") == nil)
+        #expect(ConversionEngine.parsePace("10:120") == nil)
+    }
+
     // MARK: - Speed Parsing
 
     @Test func parseSpeedValid() {

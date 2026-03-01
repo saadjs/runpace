@@ -56,7 +56,8 @@ nonisolated enum ConversionEngine {
         if segments.count == 2 {
             guard let minutes = Double(String(segments[0])),
                   let seconds = Double(String(segments[1])),
-                  minutes.isFinite, seconds.isFinite else {
+                  minutes.isFinite, seconds.isFinite,
+                  seconds >= 0, seconds < 60 else {
                 return nil
             }
             let total = minutes + seconds / 60.0
