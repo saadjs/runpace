@@ -51,6 +51,11 @@
 			path = "pace-to-mph WatchKit App";
 			sourceTree = "<group>";
 		};
+		C0FFEE110000000000000011 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -90,6 +95,7 @@
 			children = (
 				939A2E5E2F539927000B40F9 /* pace-to-mph */,
 				C0FFEE020000000000000002 /* pace-to-mph WatchKit App */,
+				C0FFEE110000000000000011 /* Shared */,
 				939A2E6C2F539928000B40F9 /* pace-to-mphTests */,
 				939A2E762F539928000B40F9 /* pace-to-mphUITests */,
 				939A2E5D2F539927000B40F9 /* Products */,
@@ -124,6 +130,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				939A2E5E2F539927000B40F9 /* pace-to-mph */,
+				C0FFEE110000000000000011 /* Shared */,
 			);
 			name = "pace-to-mph";
 			packageProductDependencies = (
@@ -192,6 +199,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				C0FFEE020000000000000002 /* pace-to-mph WatchKit App */,
+				C0FFEE110000000000000011 /* Shared */,
 			);
 			name = "pace-to-mph WatchKit App";
 			packageProductDependencies = (

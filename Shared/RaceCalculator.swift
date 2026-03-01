@@ -29,6 +29,25 @@ enum RaceCalculator {
             case .custom: return nil
             }
         }
+
+        var shortLabel: String {
+            switch self {
+            case .halfMarathon: return "Half"
+            case .marathon: return "Full"
+            default: return rawValue
+            }
+        }
+
+        func distance(unit: SpeedUnit) -> Double? {
+            switch unit {
+            case .mph: return miles
+            case .kph: return kilometers
+            }
+        }
+
+        static var standardCases: [Distance] {
+            allCases.filter { $0 != .custom }
+        }
     }
 
     /// Given pace (min/mile or min/km) and distance in the same unit, return total seconds.
