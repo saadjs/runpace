@@ -11,6 +11,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		C0FFEE140000000000000014 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 939A2E542F539927000B40F9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C0FFEE060000000000000006;
+			remoteInfo = "pace-to-mph WatchKit App";
+		};
 		939A2E6A2F539928000B40F9 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 939A2E542F539927000B40F9 /* Project object */;
@@ -146,6 +153,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				C0FFEE150000000000000015 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				939A2E5E2F539927000B40F9 /* pace-to-mph */,
@@ -338,6 +346,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		C0FFEE150000000000000015 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C0FFEE060000000000000006 /* pace-to-mph WatchKit App */;
+			targetProxy = C0FFEE140000000000000014 /* PBXContainerItemProxy */;
+		};
 		939A2E6B2F539928000B40F9 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 939A2E5B2F539927000B40F9 /* pace-to-mph */;

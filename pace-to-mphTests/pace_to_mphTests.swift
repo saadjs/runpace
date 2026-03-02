@@ -154,7 +154,7 @@ struct ConversionEngineTests {
 
 struct ReviewRegressionTests {
 
-    @Test func iosTargetDoesNotHardDependOnWatchTarget() throws {
+    @Test func iOSAppBuildsWatchTargetWhenEmbeddingWatchContent() throws {
         let project = try testFileContents(
             "pace-to-mph.xcodeproj",
             "project.pbxproj"
@@ -168,7 +168,8 @@ struct ReviewRegressionTests {
             )
         )
 
-        #expect(!appTargetBlock.contains("C0FFEE150000000000000015 /* PBXTargetDependency */"))
+        #expect(appTargetBlock.contains("C0FFEE130000000000000013 /* Embed Watch Content */"))
+        #expect(appTargetBlock.contains("C0FFEE150000000000000015 /* PBXTargetDependency */"))
     }
 
     @Test func favoriteButtonRemainsOutsideCombinedAccessibilityElement() throws {
