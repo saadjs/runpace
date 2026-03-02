@@ -2,15 +2,12 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var viewModel = ConverterViewModel()
+    @State private var favoritesStore = FavoritesStore()
     @FocusState private var isInputFocused: Bool
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color(.systemGroupedBackground)
-                    .ignoresSafeArea()
-                    .onTapGesture { isInputFocused = false }
-
+            GlassEffectContainer {
                 VStack(spacing: 0) {
                     // Header
                     headerSection
@@ -29,17 +26,62 @@ struct ContentView: View {
                         .padding(.horizontal, 16)
                         .padding(.bottom, 8)
                 }
+                .onTapGesture {
+                    isInputFocused = false
+                    viewModel.recordCurrentConversion()
+                }
+                .onChange(of: isInputFocused) { _, focused in
+                    if !focused {
+                        viewModel.recordCurrentConversion()
+                    }
+                }
             }
-            .containerShape(RoundedRectangle(cornerRadius: 44, style: .continuous))
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink {
-                        ReferenceView()
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        NavigationLink {
+                            RaceTimeView()
+                        } label: {
+                            Label("Race Calculator", systemImage: "flag.checkered")
+                        }
+
+                        NavigationLink {
+                            SplitCalculatorView()
+                        } label: {
+                            Label("Even Splits", systemImage: "chart.bar")
+                        }
+
+                        NavigationLink {
+                            NegativeSplitView()
+                        } label: {
+                            Label("Negative Splits", systemImage: "arrow.down.right")
+                        }
+
+                        Divider()
+
+                        NavigationLink {
+                            FavoritesView(store: favoritesStore)
+                        } label: {
+                            Label("Favorites", systemImage: "star")
+                        }
+
+                        NavigationLink {
+                            HistoryView(history: viewModel.history, favoritesStore: favoritesStore)
+                        } label: {
+                            Label("History", systemImage: "clock")
+                        }
+
+                        NavigationLink {
+                            ReferenceView()
+                        } label: {
+                            Label("Reference Table", systemImage: "table")
+                        }
                     } label: {
-                        Image(systemName: "table")
+                        Image(systemName: "line.3.horizontal")
                             .font(.system(size: 15, weight: .semibold))
                     }
-                    .accessibilityLabel("Pace reference table")
+                    .menuStyle(.button)
+                    .accessibilityLabel("Tools menu")
                 }
             }
         }
@@ -86,6 +128,7 @@ struct ContentView: View {
                     .keyboardType(viewModel.direction == .paceToSpeed ? .numbersAndPunctuation : .decimalPad)
                     .textFieldStyle(.plain)
                     .focused($isInputFocused)
+                    .onSubmit { viewModel.recordCurrentConversion() }
                     .minimumScaleFactor(0.5)
                     .accessibilityLabel("Enter \(viewModel.direction == .paceToSpeed ? "pace" : "speed")")
                     .accessibilityHint(viewModel.helperText)
@@ -109,30 +152,52 @@ struct ContentView: View {
 
             // Result
             VStack(spacing: 6) {
-                Text(viewModel.result.isEmpty ? "–" : viewModel.result)
-                    .font(.system(size: 48, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(viewModel.result.isEmpty ? .tertiary : .primary)
-                    .contentTransition(.numericText())
-                    .animation(.snappy(duration: 0.2), value: viewModel.result)
+                VStack(spacing: 6) {
+                    Text(viewModel.result.isEmpty ? "–" : viewModel.result)
+                        .font(.system(size: 48, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(viewModel.result.isEmpty ? .tertiary : .primary)
+                        .contentTransition(.numericText())
+                        .animation(.snappy(duration: 0.2), value: viewModel.result)
 
-                Text(viewModel.resultSuffix)
-                    .font(.system(size: 18, weight: .semibold))
-                    .tracking(2)
-                    .foregroundStyle(.secondary)
+                    Text(viewModel.resultSuffix)
+                        .font(.system(size: 18, weight: .semibold))
+                        .tracking(2)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(viewModel.result.isEmpty ? "No result" : "\(viewModel.result) \(viewModel.resultSuffix)")
+
+                if !viewModel.result.isEmpty {
+                    let isFav = favoritesStore.isFavorited(
+                        input: viewModel.inputText,
+                        inputSuffix: viewModel.inputSuffix,
+                        result: viewModel.result,
+                        resultSuffix: viewModel.resultSuffix
+                    )
+                    Button {
+                        withAnimation(.snappy(duration: 0.25)) {
+                            favoritesStore.toggle(
+                                input: viewModel.inputText,
+                                inputSuffix: viewModel.inputSuffix,
+                                result: viewModel.result,
+                                resultSuffix: viewModel.resultSuffix
+                            )
+                        }
+                    } label: {
+                        Image(systemName: isFav ? "star.fill" : "star")
+                            .font(.system(size: 20))
+                            .foregroundStyle(isFav ? .yellow : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 8)
+                    .accessibilityLabel(isFav ? "Remove from favorites" : "Add to favorites")
+                }
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(viewModel.result.isEmpty ? "No result" : "\(viewModel.result) \(viewModel.resultSuffix)")
+            .sensoryFeedback(.impact(flexibility: .soft), trigger: viewModel.result)
         }
         .padding(24)
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(Color(.secondarySystemGroupedBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(.quaternary, lineWidth: 1)
-        )
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 24))
     }
 
     // MARK: - Control Panel
@@ -161,14 +226,7 @@ struct ContentView: View {
             unitPicker
         }
         .padding(16)
-        .background(
-            ContainerRelativeShape()
-                .fill(Color(.secondarySystemGroupedBackground))
-        )
-        .overlay(
-            ContainerRelativeShape()
-                .strokeBorder(.quaternary, lineWidth: 1)
-        )
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 24))
     }
 
     private var directionPicker: some View {
@@ -184,31 +242,13 @@ struct ContentView: View {
                     Text(dir.label)
                         .font(.system(size: 15, weight: .semibold))
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            viewModel.direction == dir
-                                ? AnyShapeStyle(
-                                    LinearGradient(
-                                        colors: [Color.green.opacity(0.8), Color.green],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                : AnyShapeStyle(Color.clear)
-                        )
-                        .foregroundStyle(viewModel.direction == dir ? .white : .secondary)
-                        .clipShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glass)
+                .tint(viewModel.direction == dir ? .green : nil)
                 .accessibilityLabel(dir.label)
                 .accessibilityAddTraits(viewModel.direction == dir ? .isSelected : [])
             }
         }
-        .padding(6)
-        .background(
-            Capsule()
-                .fill(Color(.tertiarySystemGroupedBackground))
-        )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Conversion direction")
     }
@@ -225,18 +265,9 @@ struct ContentView: View {
                     Text(u.label)
                         .font(.system(size: 14, weight: .bold))
                         .tracking(1.5)
-                        .padding(.horizontal, 32)
-                        .padding(.vertical, 14)
-                        .background(
-                            Capsule()
-                                .strokeBorder(
-                                    viewModel.unit == u ? Color.green : Color(.separator),
-                                    lineWidth: 2
-                                )
-                        )
-                        .foregroundStyle(viewModel.unit == u ? .green : .secondary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glass)
+                .tint(viewModel.unit == u ? .green : nil)
                 .accessibilityLabel(u.label)
                 .accessibilityAddTraits(viewModel.unit == u ? .isSelected : [])
             }

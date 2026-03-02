@@ -35,8 +35,14 @@ final class pace_to_mphUITests: XCTestCase {
         paceAttachment.lifetime = .keepAlways
         add(paceAttachment)
 
-        // Navigate to reference table
-        app.buttons["Pace reference table"].tap()
+        // Navigate to reference table via toolbar menu
+        let toolsMenu = app.buttons["Tools menu"]
+        XCTAssertTrue(toolsMenu.waitForExistence(timeout: 3))
+        toolsMenu.tap()
+
+        let referenceTable = app.buttons["Reference Table"]
+        XCTAssertTrue(referenceTable.waitForExistence(timeout: 3))
+        referenceTable.tap()
         sleep(1)
 
         // Screenshot 3: Reference table

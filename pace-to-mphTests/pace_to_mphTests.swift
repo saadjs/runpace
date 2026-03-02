@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import pace_to_mph
 
 struct ConversionEngineTests {
@@ -29,6 +30,12 @@ struct ConversionEngineTests {
     @Test func parsePaceInvalid() {
         #expect(ConversionEngine.parsePace("abc") == nil)
         #expect(ConversionEngine.parsePace("0:00") == nil)
+    }
+
+    @Test func parsePaceRejectsSecondsAbove59() {
+        #expect(ConversionEngine.parsePace("8:60") == nil)
+        #expect(ConversionEngine.parsePace("8:90") == nil)
+        #expect(ConversionEngine.parsePace("10:120") == nil)
     }
 
     // MARK: - Speed Parsing
@@ -98,6 +105,38 @@ struct ConversionEngineTests {
         #expect(ConversionEngine.convertPaceBetweenUnits(8.0, from: .kph, to: .kph) == 8.0)
     }
 
+    @Test func convertPaceInputBetweenUnitsReformatsEquivalentPace() {
+        #expect(ConversionEngine.convertPaceInput("8:00", from: .mph, to: .kph) == "4:58")
+        #expect(ConversionEngine.convertPaceInput("4:58", from: .kph, to: .mph) == "8:00")
+    }
+
+    @Test func convertPaceComponentsBetweenUnitsPreservesValue() {
+        let converted = ConversionEngine.convertPaceComponents(minutes: 8, seconds: 0, from: .mph, to: .kph)
+        #expect(converted != nil)
+        #expect(converted?.minutes == 4)
+        #expect(converted?.seconds == 58)
+    }
+
+    // Regression: dropSeconds in NegativeSplitView is a time-per-distance rate (seconds),
+    // not a pace in minutes. Dedicated helper must convert it correctly.
+    @Test func convertDropSecondsBetweenUnits() {
+        // 5 sec/mi → ~3 sec/km (5 / 1.60934)
+        let toKph = ConversionEngine.convertDropSecondsBetweenUnits(5.0, from: .mph, to: .kph)
+        #expect(abs(toKph - 5.0 / 1.60934) < 0.01)
+
+        // 3 sec/km → ~4.83 sec/mi (3 * 1.60934)
+        let toMph = ConversionEngine.convertDropSecondsBetweenUnits(3.0, from: .kph, to: .mph)
+        #expect(abs(toMph - 3.0 * 1.60934) < 0.01)
+
+        // Same unit → unchanged
+        #expect(ConversionEngine.convertDropSecondsBetweenUnits(5.0, from: .mph, to: .mph) == 5.0)
+    }
+
+    @Test func convertDistanceInputBetweenUnitsReformatsEquivalentDistance() {
+        #expect(ConversionEngine.convertDistanceInput("3.11", from: .mph, to: .kph) == "5.01")
+        #expect(ConversionEngine.convertDistanceInput("5", from: .kph, to: .mph) == "3.11")
+    }
+
     // MARK: - Full Conversion
 
     @Test func fullPaceToSpeed() {
@@ -126,4 +165,112 @@ struct ConversionEngineTests {
         let result = ConversionEngine.sanitizeInput(direction: .speedToPace, value: "10.5abc")
         #expect(result == "10.5")
     }
+}
+
+struct ReviewRegressionTests {
+
+    @Test func iOSAppBuildsWatchTargetWhenEmbeddingWatchContent() throws {
+        let project = try testFileContents(
+            "pace-to-mph.xcodeproj",
+            "project.pbxproj"
+        )
+
+        let appTargetBlock = try #require(
+            slice(
+                in: project,
+                from: "939A2E5B2F539927000B40F9 /* pace-to-mph */ = {",
+                to: "939A2E682F539928000B40F9 /* pace-to-mphTests */ = {"
+            )
+        )
+
+        #expect(appTargetBlock.contains("C0FFEE130000000000000013 /* Embed Watch Content */"))
+        #expect(appTargetBlock.contains("C0FFEE150000000000000015 /* PBXTargetDependency */"))
+    }
+
+    @Test func favoriteButtonRemainsOutsideCombinedAccessibilityElement() throws {
+        let contentView = try testFileContents("pace-to-mph", "ContentView.swift")
+        let resultSection = try #require(
+            slice(
+                in: contentView,
+                from: "// Result",
+                to: ".sensoryFeedback(.impact(flexibility: .soft), trigger: viewModel.result)"
+            )
+        )
+
+        let combineIndex = try #require(
+            resultSection.range(of: ".accessibilityElement(children: .combine)")?.lowerBound
+        )
+        let favoriteIndex = try #require(
+            resultSection.range(of: "if !viewModel.result.isEmpty {")?.lowerBound
+        )
+
+        #expect(combineIndex < favoriteIndex)
+    }
+
+    @Test func favoritesRowKeepsRemoveButtonFocusable() throws {
+        let favoritesView = try testFileContents("pace-to-mph", "FavoritesView.swift")
+        let rowSection = try #require(
+            slice(
+                in: favoritesView,
+                from: "private func favoriteCard(_ fav: FavoriteConversion) -> some View {",
+                to: "#Preview {"
+            )
+        )
+
+        #expect(!rowSection.contains("""
+        .padding(16)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+        .accessibilityElement(children: .combine)
+        """))
+    }
+
+    @Test func historyRowKeepsFavoriteButtonFocusable() throws {
+        let historyView = try testFileContents("pace-to-mph", "HistoryView.swift")
+        let rowSection = try #require(
+            slice(
+                in: historyView,
+                from: "private func recordRow(_ record: ConversionRecord) -> some View {",
+                to: "#Preview {"
+            )
+        )
+
+        #expect(!rowSection.contains("""
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        """))
+    }
+
+    @Test func favoriteButtonsUseActionBasedLabels() throws {
+        let contentView = try testFileContents("pace-to-mph", "ContentView.swift")
+        let historyView = try testFileContents("pace-to-mph", "HistoryView.swift")
+
+        #expect(!contentView.contains("Toggle favorite"))
+        #expect(!historyView.contains("Toggle favorite"))
+        #expect(contentView.contains("Add to favorites"))
+        #expect(contentView.contains("Remove from favorites"))
+        #expect(historyView.contains("Add to favorites"))
+        #expect(historyView.contains("Remove from favorites"))
+    }
+}
+
+private func testFileContents(_ pathComponents: String...) throws -> String {
+    let fileURL = repoRootURL().appending(path: pathComponents.joined(separator: "/"))
+    return try String(contentsOf: fileURL, encoding: .utf8)
+}
+
+private func repoRootURL() -> URL {
+    URL(filePath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+}
+
+private func slice(in source: String, from start: String, to end: String) -> String? {
+    guard
+        let startRange = source.range(of: start),
+        let endRange = source.range(of: end, range: startRange.lowerBound..<source.endIndex)
+    else {
+        return nil
+    }
+
+    return String(source[startRange.lowerBound..<endRange.lowerBound])
 }
