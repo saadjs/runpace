@@ -78,8 +78,10 @@ enum RaceCalculator {
     /// Parse "h:mm:ss" or "mm:ss" into total seconds, returns nil if invalid.
     static func parseDuration(_ input: String) -> Int? {
         let trimmed = input.trimmingCharacters(in: .whitespaces)
-        let parts = trimmed.split(separator: ":")
-        guard !parts.isEmpty, parts.count <= 3 else { return nil }
+        guard !trimmed.isEmpty else { return nil }
+
+        let parts = trimmed.split(separator: ":", omittingEmptySubsequences: false)
+        guard !parts.isEmpty, parts.count <= 3, parts.allSatisfy({ !$0.isEmpty }) else { return nil }
 
         let ints = parts.compactMap { Int($0) }
         guard ints.count == parts.count else { return nil }

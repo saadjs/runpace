@@ -53,6 +53,12 @@ struct RaceCalculatorTests {
         #expect(RaceCalculator.parseDuration("1:2:3:4") == nil)
     }
 
+    @Test func parseDurationRejectsMissingComponents() {
+        #expect(RaceCalculator.parseDuration("1:") == nil)
+        #expect(RaceCalculator.parseDuration("1::30") == nil)
+        #expect(RaceCalculator.parseDuration(":30") == nil)
+    }
+
     // MARK: - Negative Splits
 
     @Test func negativeSplitsEvenDistance() {
