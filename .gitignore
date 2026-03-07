@@ -9,3 +9,7 @@ DerivedData/
 
 # OS
 .DS_Store
+
+# App Store distribution
+ExportOptions.plist
+*.p8
