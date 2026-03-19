@@ -504,6 +504,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				INFOPLIST_KEY_CFBundleDisplayName = RunPace;
 				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "sh.saad.pace-to-mph";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -536,6 +537,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				INFOPLIST_KEY_CFBundleDisplayName = RunPace;
 				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "sh.saad.pace-to-mph";
 				PRODUCT_NAME = "$(TARGET_NAME)";
