@@ -33,6 +33,19 @@ struct RaceCalculatorTests {
         #expect(abs(pace - 8.0) < 0.01)
     }
 
+    @Test func requiredPaceMarathonBothUnits() {
+        // 3:00:00 marathon → ~6:52/mi and ~4:16/km
+        let totalSeconds = 3 * 3600
+        let milePace = RaceCalculator.requiredPace(totalSeconds: totalSeconds, distanceInUnits: 26.2188)
+        let kmPace = RaceCalculator.requiredPace(totalSeconds: totalSeconds, distanceInUnits: 42.195)
+        #expect(abs(milePace - 6.865) < 0.01)
+        #expect(abs(kmPace - 4.265) < 0.01)
+    }
+
+    @Test func requiredPaceZeroDistance() {
+        #expect(RaceCalculator.requiredPace(totalSeconds: 1800, distanceInUnits: 0) == 0)
+    }
+
     // MARK: - Parse Duration
 
     @Test func parseDurationHMS() {
