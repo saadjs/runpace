@@ -54,6 +54,12 @@ struct ContentView: View {
                         Divider()
 
                         NavigationLink {
+                            RunHistoryView()
+                        } label: {
+                            Label("Run History", systemImage: "figure.run")
+                        }
+
+                        NavigationLink {
                             FavoritesView(store: favoritesStore)
                         } label: {
                             Label("Favorites", systemImage: "star")
