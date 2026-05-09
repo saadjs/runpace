@@ -224,33 +224,14 @@ struct ReviewRegressionTests {
         """))
     }
 
-    @Test func historyRowKeepsFavoriteButtonFocusable() throws {
-        let historyView = try testFileContents("pace-to-mph", "HistoryView.swift")
-        let rowSection = try #require(
-            slice(
-                in: historyView,
-                from: "private func recordRow(_ record: ConversionRecord) -> some View {",
-                to: "#Preview {"
-            )
-        )
-
-        #expect(!rowSection.contains("""
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
-        """))
-    }
-
     @Test func favoriteButtonsUseActionBasedLabels() throws {
         let contentView = try testFileContents("pace-to-mph", "ContentView.swift")
-        let historyView = try testFileContents("pace-to-mph", "HistoryView.swift")
 
         #expect(!contentView.contains("Toggle favorite"))
-        #expect(!historyView.contains("Toggle favorite"))
         #expect(contentView.contains("Add to favorites"))
         #expect(contentView.contains("Remove from favorites"))
-        #expect(historyView.contains("Add to favorites"))
-        #expect(historyView.contains("Remove from favorites"))
     }
+
 }
 
 private func testFileContents(_ pathComponents: String...) throws -> String {

@@ -2,8 +2,6 @@ import SwiftUI
 
 @Observable
 final class ConverterViewModel {
-    let history = ConversionHistory()
-
     var direction: ConversionDirection {
         didSet {
             storedDirection = direction.rawValue
@@ -85,24 +83,11 @@ final class ConverterViewModel {
 
     func switchDirection(to newDirection: ConversionDirection) {
         guard newDirection != direction else { return }
-        recordCurrentConversion()
         direction = newDirection
-    }
-
-    func recordCurrentConversion() {
-        let currentResult = result
-        guard !currentResult.isEmpty, !inputText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        history.add(
-            input: inputText,
-            inputSuffix: inputSuffix,
-            result: currentResult,
-            resultSuffix: resultSuffix
-        )
     }
 
     func switchUnit(to newUnit: SpeedUnit) {
         guard newUnit != unit else { return }
-        recordCurrentConversion()
         oldUnit = unit
         unit = newUnit
     }

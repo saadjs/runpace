@@ -10,7 +10,7 @@ struct FavoritesView: View {
                 ContentUnavailableView {
                     Label("No Favorites", systemImage: "star")
                 } description: {
-                    Text("Pin conversions from the converter or history to see them here.")
+                    Text("Pin conversions from the converter to see them here.")
                 }
             } else {
                 GlassEffectContainer {

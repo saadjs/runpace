@@ -28,12 +28,6 @@ struct ContentView: View {
                 }
                 .onTapGesture {
                     isInputFocused = false
-                    viewModel.recordCurrentConversion()
-                }
-                .onChange(of: isInputFocused) { _, focused in
-                    if !focused {
-                        viewModel.recordCurrentConversion()
-                    }
                 }
             }
             .toolbar {
@@ -63,12 +57,6 @@ struct ContentView: View {
                             FavoritesView(store: favoritesStore)
                         } label: {
                             Label("Favorites", systemImage: "star")
-                        }
-
-                        NavigationLink {
-                            HistoryView(history: viewModel.history, favoritesStore: favoritesStore)
-                        } label: {
-                            Label("History", systemImage: "clock")
                         }
 
                         NavigationLink {
@@ -128,7 +116,6 @@ struct ContentView: View {
                     .keyboardType(viewModel.direction == .paceToSpeed ? .numbersAndPunctuation : .decimalPad)
                     .textFieldStyle(.plain)
                     .focused($isInputFocused)
-                    .onSubmit { viewModel.recordCurrentConversion() }
                     .minimumScaleFactor(0.5)
                     .accessibilityLabel("Enter \(viewModel.direction == .paceToSpeed ? "pace" : "speed")")
                     .accessibilityHint(viewModel.helperText)
