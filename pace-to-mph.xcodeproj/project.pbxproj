@@ -11,13 +11,6 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		C0FFEE140000000000000014 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 939A2E542F539927000B40F9 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = C0FFEE060000000000000006;
-			remoteInfo = "pace-to-mph WatchKit App";
-		};
 		939A2E6A2F539928000B40F9 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 939A2E542F539927000B40F9 /* Project object */;
@@ -31,6 +24,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 939A2E5B2F539927000B40F9;
 			remoteInfo = "pace-to-mph";
+		};
+		C0FFEE140000000000000014 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 939A2E542F539927000B40F9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C0FFEE060000000000000006;
+			remoteInfo = "pace-to-mph WatchKit App";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -346,11 +346,6 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		C0FFEE150000000000000015 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = C0FFEE060000000000000006 /* pace-to-mph WatchKit App */;
-			targetProxy = C0FFEE140000000000000014 /* PBXContainerItemProxy */;
-		};
 		939A2E6B2F539928000B40F9 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 939A2E5B2F539927000B40F9 /* pace-to-mph */;
@@ -360,6 +355,11 @@
 			isa = PBXTargetDependency;
 			target = 939A2E5B2F539927000B40F9 /* pace-to-mph */;
 			targetProxy = 939A2E742F539928000B40F9 /* PBXContainerItemProxy */;
+		};
+		C0FFEE150000000000000015 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C0FFEE060000000000000006 /* pace-to-mph WatchKit App */;
+			targetProxy = C0FFEE140000000000000014 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -496,6 +496,7 @@
 				DEVELOPMENT_TEAM = 2ZPA772V9V;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = RunPace;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "RunPace reads your running workouts from Apple Health to display pace and speed in mph or kph.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "RunPace does not write to Apple Health.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -507,7 +508,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				INFOPLIST_KEY_CFBundleDisplayName = RunPace;
 				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "sh.saad.pace-to-mph";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -532,6 +532,7 @@
 				DEVELOPMENT_TEAM = 2ZPA772V9V;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = RunPace;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "RunPace reads your running workouts from Apple Health to display pace and speed in mph or kph.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "RunPace does not write to Apple Health.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -543,7 +544,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				INFOPLIST_KEY_CFBundleDisplayName = RunPace;
 				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "sh.saad.pace-to-mph";
 				PRODUCT_NAME = "$(TARGET_NAME)";
