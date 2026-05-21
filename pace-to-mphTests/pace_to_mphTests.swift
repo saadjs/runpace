@@ -253,6 +253,33 @@ struct ReviewRegressionTests {
         #expect(emptyView.contains("Open Settings"))
     }
 
+    // Regression: HealthKit hides read-denial and revocation. User-triggered
+    // refreshes must use a nil anchor (full sync) so we (a) self-heal from a
+    // poisoned anchor stored under denied access, and (b) reconcile deletions
+    // when access was revoked after a successful sync (otherwise stale cached
+    // runs display forever). Observer path stays incremental.
+    @Test func healthKitUserRefreshDoesFullSyncAndReconcilesDeletions() throws {
+        let service = try testFileContents("pace-to-mph", "Services/HealthKitService.swift")
+        let refresh = try #require(
+            slice(in: service, from: "func refresh(fullSync", to: "private func loadCachedRuns")
+        )
+        #expect(refresh.contains("fullSync ? nil : try storedAnchor()"))
+        #expect(refresh.contains("cachedIDs.filter { !fetchedIDs.contains($0) }"))
+
+        // Observer callback must stay incremental.
+        #expect(service.contains("refresh(fullSync: false)"))
+    }
+
+    // Regression: user grants/revokes Health access in Settings while the app
+    // is backgrounded; on return the view's .task does not refire, so we must
+    // refresh on scenePhase -> .active.
+    @Test func runHistoryRefreshesOnForeground() throws {
+        let view = try testFileContents("pace-to-mph", "RunHistoryView.swift")
+        #expect(view.contains("scenePhase"))
+        #expect(view.contains(".onChange(of: scenePhase)"))
+        #expect(view.contains("newPhase == .active"))
+    }
+
 }
 
 private func testFileContents(_ pathComponents: String...) throws -> String {

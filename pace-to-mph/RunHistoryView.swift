@@ -6,6 +6,7 @@ struct RunHistoryView: View {
     let service: HealthKitService
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @State private var settings = UnitSettings.shared
     private var unit: SpeedUnit { settings.unit }
 
@@ -35,6 +36,13 @@ struct RunHistoryView: View {
                 await service.refresh()
                 service.startObserving()
             }
+        }
+        // Refresh on foreground so we pick up access grants/revokes the user
+        // made in Settings while the app was backgrounded.
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active,
+                  service.authorizationState == .authorized else { return }
+            Task { await service.refresh() }
         }
     }
 

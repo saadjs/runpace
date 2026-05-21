@@ -64,7 +64,12 @@ final class HealthKitService {
         }
     }
 
-    func refresh() async {
+    // User-triggered / view-appearance refreshes use a nil anchor (full sync)
+    // so we self-heal from two cases HealthKit hides from us: read-denial
+    // poisoning the anchor with 0 results, and silent revocation after a
+    // successful sync (cache would otherwise show stale ghost data forever).
+    // The observer query path passes fullSync: false for incremental sync.
+    func refresh(fullSync: Bool = true) async {
         guard HKHealthStore.isHealthDataAvailable() else {
             loadCachedRuns()
             return
@@ -81,11 +86,21 @@ final class HealthKitService {
                 return
             }
 
-            let anchor = try storedAnchor()
+            let anchor: HKQueryAnchor? = fullSync ? nil : try storedAnchor()
             let changes = try await fetchRunningWorkoutChanges(anchor: anchor)
+
+            let deletedIDs: [UUID]
+            if fullSync {
+                let fetchedIDs = Set(changes.workouts.map(\.id))
+                let cachedIDs = try runStore.fetchRuns().map(\.id)
+                deletedIDs = cachedIDs.filter { !fetchedIDs.contains($0) }
+            } else {
+                deletedIDs = changes.deletedIDs
+            }
+
             try runStore.applyChanges(
                 upserting: changes.workouts,
-                deleting: changes.deletedIDs,
+                deleting: deletedIDs,
                 anchorData: try Self.archiveAnchor(changes.anchor)
             )
             loadCachedRuns()
@@ -179,7 +194,7 @@ final class HealthKitService {
                     self?.lastError = message
                     return
                 }
-                await self?.refresh()
+                await self?.refresh(fullSync: false)
             }
         }
         healthStore.execute(query)
