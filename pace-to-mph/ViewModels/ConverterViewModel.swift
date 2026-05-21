@@ -73,4 +73,10 @@ final class ConverterViewModel {
         guard newDirection != direction else { return }
         direction = newDirection
     }
+
+    // Called when the global unit changes. The typed value's meaning
+    // (e.g. min/mi vs min/km) would silently flip, so we clear it.
+    func handleUnitChange() {
+        inputText = ""
+    }
 }

@@ -5,6 +5,7 @@ struct ContentView: View {
 
     @State private var viewModel = ConverterViewModel()
     @State private var favoritesStore = FavoritesStore()
+    @State private var unitSettings = UnitSettings.shared
     @FocusState private var isInputFocused: Bool
 
     init(healthKitService: HealthKitService) {
@@ -34,6 +35,9 @@ struct ContentView: View {
                 }
                 .onTapGesture {
                     isInputFocused = false
+                }
+                .onChange(of: unitSettings.unit) { _, _ in
+                    viewModel.handleUnitChange()
                 }
             }
             .toolbar {
