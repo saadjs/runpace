@@ -146,11 +146,17 @@ final class HealthKitService {
                         return
                     }
                     let workouts = (samples as? [HKWorkout]) ?? []
-                    let mapped = workouts.map { Self.mapWorkout($0) }
-                    let deletedIDs = (deletedObjects ?? []).map(\.uuid)
+                    let imported = workouts.reduce(into: (runs: [RunWorkout](), invalidIDs: [UUID]())) { result, workout in
+                        if let run = Self.mapImportableWorkout(workout) {
+                            result.runs.append(run)
+                        } else {
+                            result.invalidIDs.append(workout.uuid)
+                        }
+                    }
+                    let deletedIDs = (deletedObjects ?? []).map(\.uuid) + imported.invalidIDs
                     continuation.resume(
                         returning: RunningWorkoutChanges(
-                            workouts: mapped,
+                            workouts: imported.runs,
                             deletedIDs: deletedIDs,
                             anchor: newAnchor
                         )
@@ -161,7 +167,7 @@ final class HealthKitService {
         }
     }
 
-    private nonisolated static func mapWorkout(_ workout: HKWorkout) -> RunWorkout {
+    nonisolated static func mapImportableWorkout(_ workout: HKWorkout) -> RunWorkout? {
         let meters: Double = {
             if let stats = workout.statistics(for: HKQuantityType(.distanceWalkingRunning)),
                let sum = stats.sumQuantity() {
@@ -170,6 +176,12 @@ final class HealthKitService {
             // Fallback for older samples.
             return workout.totalDistance?.doubleValue(for: .meter()) ?? 0
         }()
+
+        guard meters.isFinite, meters > 0,
+              workout.duration.isFinite, workout.duration > 0 else {
+            return nil
+        }
+
         return RunWorkout(
             id: workout.uuid,
             startDate: workout.startDate,
