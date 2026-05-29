@@ -165,6 +165,12 @@ private struct RunHistoryContent: View {
         RunHistoryStats.personalRecords(from: runs, unit: unit)
     }
 
+    // Always derived from the full run set so every PR badge shows in the Runs
+    // list regardless of the period filter or Trends tab selection.
+    private var prBadgesByRunID: [UUID: [RunRecordTarget]] {
+        RunHistoryStats.personalRecordTargets(from: runs, unit: unit)
+    }
+
     private var selectedRecord: RunPersonalRecord? {
         records.first { $0.id == selectedRecordID } ?? records.first
     }
@@ -438,12 +444,12 @@ private struct RunHistoryContent: View {
         LazyVStack(spacing: 12) {
             ForEach(weeks) { week in
                 if week.isCurrentWeek {
-                    ExpandedWeekSection(week: week, unit: unit, selectedRecord: selectedRecord)
+                    ExpandedWeekSection(week: week, unit: unit, prBadgesByRunID: prBadgesByRunID)
                 } else {
                     CollapsedWeekSection(
                         week: week,
                         unit: unit,
-                        selectedRecord: selectedRecord,
+                        prBadgesByRunID: prBadgesByRunID,
                         isExpanded: Binding(
                             get: { expandedWeekIDs.contains(week.id) },
                             set: { isExpanded in
@@ -1100,7 +1106,7 @@ private struct WeeklyVolumeCard: View {
 private struct ExpandedWeekSection: View {
     let week: RunHistoryWeek
     let unit: SpeedUnit
-    let selectedRecord: RunPersonalRecord?
+    let prBadgesByRunID: [UUID: [RunRecordTarget]]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1109,7 +1115,7 @@ private struct ExpandedWeekSection: View {
                 RunHistoryRow(
                     run: run,
                     unit: unit,
-                    prBadge: run.id == selectedRecord?.runID ? "\(selectedRecord?.target.shortLabel ?? "") PR" : nil
+                    prBadges: prBadgesByRunID[run.id] ?? []
                 )
             }
         }
@@ -1120,7 +1126,7 @@ private struct ExpandedWeekSection: View {
 private struct CollapsedWeekSection: View {
     let week: RunHistoryWeek
     let unit: SpeedUnit
-    let selectedRecord: RunPersonalRecord?
+    let prBadgesByRunID: [UUID: [RunRecordTarget]]
     @Binding var isExpanded: Bool
 
     var body: some View {
@@ -1143,7 +1149,7 @@ private struct CollapsedWeekSection: View {
                     RunHistoryRow(
                         run: run,
                         unit: unit,
-                        prBadge: run.id == selectedRecord?.runID ? "\(selectedRecord?.target.shortLabel ?? "") PR" : nil
+                        prBadges: prBadgesByRunID[run.id] ?? []
                     )
                 }
             }
@@ -1213,7 +1219,7 @@ private struct WeekHeader: View {
 private struct RunHistoryRow: View {
     let run: RunWorkout
     let unit: SpeedUnit
-    let prBadge: String?
+    let prBadges: [RunRecordTarget]
 
     private var speedText: String {
         let value = unit == .mph ? run.averageSpeedMph : run.averageSpeedKph
@@ -1244,8 +1250,8 @@ private struct RunHistoryRow: View {
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .foregroundStyle(.primary)
-                    if let prBadge {
-                        Label(prBadge, systemImage: "rosette")
+                    ForEach(prBadges) { target in
+                        Label("\(target.shortLabel) PR", systemImage: "rosette")
                             .labelStyle(.titleAndIcon)
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.green)
@@ -1350,6 +1356,21 @@ struct RunHistoryStats {
                 achievedDate: best.date
             )
         }
+    }
+
+    /// Maps each run to every personal-record target it holds, so PR badges in
+    /// the Runs list can render independently of the Trends tab selection. Built
+    /// from `personalRecords`, so it inherits unit visibility and target order.
+    static func personalRecordTargets(
+        from runs: [RunWorkout],
+        unit: SpeedUnit,
+        referenceDate: Date = Date()
+    ) -> [UUID: [RunRecordTarget]] {
+        var map: [UUID: [RunRecordTarget]] = [:]
+        for record in personalRecords(from: runs, unit: unit, referenceDate: referenceDate) {
+            map[record.runID, default: []].append(record.target)
+        }
+        return map
     }
 
     static func chartPoints(

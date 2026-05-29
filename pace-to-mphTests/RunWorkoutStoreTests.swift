@@ -99,6 +99,27 @@ struct RunWorkoutStoreTests {
         #expect(sharedTargetIDs.allSatisfy { kphTargetIDs.contains($0) })
     }
 
+    @Test func personalRecordTargetsMapsEachRunToAllItsPRsIndependentOfSelection() {
+        // Fast short run wins the shorter targets; slow long run wins the
+        // longer ones. Both runs end up holding multiple PRs simultaneously.
+        let fastShort = makeRun(
+            id: UUID(uuidString: "66666666-6666-6666-6666-666666666666")!,
+            distanceMeters: 5_000,
+            duration: 1_200
+        )
+        let slowLong = makeRun(
+            id: UUID(uuidString: "77777777-7777-7777-7777-777777777777")!,
+            distanceMeters: 42_195,
+            duration: 14_400
+        )
+
+        let map = RunHistoryStats.personalRecordTargets(from: [fastShort, slowLong], unit: .mph)
+
+        // The map is derived from runs alone — no Trends selection feeds into it.
+        #expect(map[fastShort.id] == [.oneMile, .fiveKilometers])
+        #expect(map[slowLong.id] == [.tenKilometers, .halfMarathon, .marathon])
+    }
+
     private func makeStore() throws -> RunWorkoutStore {
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(
