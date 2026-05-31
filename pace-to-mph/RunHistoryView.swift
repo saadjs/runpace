@@ -145,7 +145,6 @@ private struct RunHistoryContent: View {
     let runs: [RunWorkout]
     let unit: SpeedUnit
 
-    @State private var selectedRecordID: String?
     @State private var selectedTrendScope: RunTrendScope = .threeMonths
     @State private var selectedChartPoint: RunChartPoint?
     @State private var expandedWeekIDs: Set<String> = []
@@ -171,17 +170,8 @@ private struct RunHistoryContent: View {
         RunHistoryStats.personalRecordTargets(from: runs, unit: unit)
     }
 
-    private var selectedRecord: RunPersonalRecord? {
-        records.first { $0.id == selectedRecordID } ?? records.first
-    }
-
-    private var chartPoints: [RunChartPoint] {
-        RunHistoryStats.chartPoints(
-            from: runs,
-            target: selectedRecord?.target ?? .fiveKilometers,
-            unit: unit,
-            scope: selectedTrendScope
-        )
+    private var speedTrend: RunSpeedTrend {
+        RunHistoryStats.speedTrend(from: runs, scope: selectedTrendScope, unit: unit)
     }
 
     private var activitySummary: RunActivitySummary {
@@ -257,27 +247,20 @@ private struct RunHistoryContent: View {
         .sensoryFeedback(.selection, trigger: selectedChartPoint?.id)
         .onAppear {
             normalizePeriodSelections()
-            normalizeSelectedRecord()
             expandedWeekIDs = Set(weeks.filter(\.isCurrentWeek).map(\.id))
         }
         .onChange(of: runs) { _, _ in
             normalizePeriodSelections()
-            normalizeSelectedRecord()
             expandedWeekIDs.formUnion(weeks.filter(\.isCurrentWeek).map(\.id))
         }
         .onChange(of: selectedFilter) { _, _ in
             selectedChartPoint = nil
-            normalizeSelectedRecord()
             expandedWeekIDs = Set(weeks.filter(\.isCurrentWeek).map(\.id))
         }
         .onChange(of: unit) { _, _ in
             selectedChartPoint = nil
-            normalizeSelectedRecord()
         }
         .onChange(of: selectedTrendScope) { _, _ in
-            selectedChartPoint = nil
-        }
-        .onChange(of: selectedRecordID) { _, _ in
             selectedChartPoint = nil
         }
     }
@@ -289,26 +272,14 @@ private struct RunHistoryContent: View {
         } else {
             Group {
                 TrendScopeMenu(scope: $selectedTrendScope)
-                ActivitySummaryCard(summary: activitySummary, scope: selectedTrendScope)
-                PersonalBestsGrid(
-                    records: records,
-                    selectedID: selectedRecord?.id,
-                    unit: unit,
-                    onSelect: { record in
-                        withAnimation(.snappy(duration: 0.2)) {
-                            selectedRecordID = record.id
-                        }
-                    }
+                SpeedTrendCard(
+                    trend: speedTrend,
+                    selectedPoint: $selectedChartPoint,
+                    scope: selectedTrendScope,
+                    unit: unit
                 )
-                if let record = selectedRecord {
-                    TrendChartCard(
-                        points: chartPoints,
-                        selectedPoint: $selectedChartPoint,
-                        record: record,
-                        scope: selectedTrendScope,
-                        unit: unit
-                    )
-                }
+                ActivitySummaryCard(summary: activitySummary, scope: selectedTrendScope)
+                PersonalBestsGrid(records: records, unit: unit)
                 WeeklyVolumeCard(bars: volumeBars, scope: selectedTrendScope, unit: unit)
             }
             .tint(.green)
@@ -429,14 +400,6 @@ private struct RunHistoryContent: View {
         let years = yearOptions
         if years.contains(selectedYearFilter) == false {
             selectedYearFilter = years.first ?? currentYearFilter
-        }
-    }
-
-    private func normalizeSelectedRecord() {
-        guard let selectedRecordID,
-              records.contains(where: { $0.id == selectedRecordID }) else {
-            selectedRecordID = records.first?.id
-            return
         }
     }
 
@@ -655,9 +618,7 @@ private struct ActivitySummaryCard: View {
 
 private struct PersonalBestsGrid: View {
     let records: [RunPersonalRecord]
-    let selectedID: String?
     let unit: SpeedUnit
-    let onSelect: (RunPersonalRecord) -> Void
 
     private let columns = [
         GridItem(.flexible(), spacing: 8),
@@ -677,14 +638,7 @@ private struct PersonalBestsGrid: View {
 
             LazyVGrid(columns: columns, spacing: 10) {
                 ForEach(records) { record in
-                    PBCell(
-                        target: record.target,
-                        record: record,
-                        isSelected: record.id == selectedID,
-                        unit: unit
-                    ) {
-                        onSelect(record)
-                    }
+                    PBCell(target: record.target, record: record, unit: unit)
                 }
             }
         }
@@ -694,117 +648,91 @@ private struct PersonalBestsGrid: View {
 private struct PBCell: View {
     let target: RunRecordTarget
     let record: RunPersonalRecord
-    let isSelected: Bool
     let unit: SpeedUnit
-    let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(target.displayName)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(isSelected ? Color.green : .primary)
-                    Spacer()
-                    if isSelected {
-                        Image(systemName: "chart.line.uptrend.xyaxis")
-                            .imageScale(.small)
-                            .foregroundStyle(.green)
-                    }
-                }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(target.displayName)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Image(systemName: "rosette")
+                    .imageScale(.small)
+                    .foregroundStyle(.green)
+            }
 
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(record.speedText)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .fontDesign(.rounded)
-                        .foregroundStyle(.primary)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    Text(unit.speedLabel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Text("\(record.paceText) \(unit.paceLabel)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(record.speedText)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .fontDesign(.rounded)
+                    .foregroundStyle(.primary)
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+                Text(unit.speedLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
-                Text(record.achievedDate, format: .dateTime.month(.abbreviated).day().year())
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
-            .overlay {
-                RoundedRectangle(cornerRadius: 14)
-                    .strokeBorder(
-                        isSelected ? Color.green : Color.clear,
-                        lineWidth: 1.5
-                    )
-            }
+            Text("\(record.paceText) \(unit.paceLabel)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+
+            Text(record.achievedDate, format: .dateTime.month(.abbreviated).day().year())
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(target.displayName) personal best, \(record.speedText) \(unit.speedLabel)\(isSelected ? ", selected" : "")")
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(target.displayName) personal best, \(record.speedText) \(unit.speedLabel)")
     }
 }
 
-private struct TrendChartCard: View {
-    let points: [RunChartPoint]
+/// Hero of the Trends tab: plots every run's average speed as dots with a
+/// best-fit trend line, plus a plain-language verdict, so "am I getting faster?"
+/// reads at a glance. Scrub the chart to inspect any single run.
+private struct SpeedTrendCard: View {
+    let trend: RunSpeedTrend
     @Binding var selectedPoint: RunChartPoint?
-    let record: RunPersonalRecord
     let scope: RunTrendScope
     let unit: SpeedUnit
 
-    private var displayPoint: RunChartPoint? { selectedPoint }
-
-    private func deltaString(from start: RunChartPoint?, to end: RunChartPoint?) -> String? {
-        guard let start, let end, start.id != end.id else { return nil }
-        let delta = end.speed - start.speed
-        return "\(delta >= 0 ? "+" : "-")\(String(format: "%.2f", abs(delta))) \(unit.speedLabel)"
-    }
-
     private var speedDomain: ClosedRange<Double> {
-        guard let minSpeed = points.map(\.speed).min(),
-              let maxSpeed = points.map(\.speed).max() else {
+        var values = trend.points.map(\.speed)
+        if let start = trend.trendStart?.speed { values.append(start) }
+        if let end = trend.trendEnd?.speed { values.append(end) }
+        guard let minSpeed = values.min(), let maxSpeed = values.max() else {
             return 0...1
         }
         let spread = maxSpeed - minSpeed
-        let padding = max(spread * 0.35, 0.08)
+        let padding = max(spread * 0.3, 0.1)
         let lowerBound = max(0, minSpeed - padding)
         return lowerBound...(maxSpeed + padding)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("\(record.target.displayName) Pace Trend")
-                        .font(.headline)
-                    Spacer()
-                    Text(scope.menuLabel)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                Text("Your fastest \(unit.speedLabel) pace from runs of \(record.target.distanceCopy) or longer.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            header
 
-            headerContent
-                .frame(height: 48, alignment: .top)
-                .animation(.easeOut(duration: 0.12), value: displayPoint?.id)
+            metricRow
+                .frame(height: 52, alignment: .top)
+                .animation(.easeOut(duration: 0.12), value: selectedPoint?.id)
 
             chart
-                .frame(height: 150)
+                .frame(height: 168)
+
+            if selectedPoint == nil, trend.hasData {
+                legend
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity)
@@ -814,22 +742,39 @@ private struct TrendChartCard: View {
         }
     }
 
-    @ViewBuilder
-    private var headerContent: some View {
-        if let displayPoint {
-            scrubHeader(for: displayPoint)
-        } else {
-            idleHeader
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Speed Trend")
+                    .font(.headline)
+                Spacer()
+                Text(scope.menuLabel)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Text("Average \(unit.speedLabel) for every run, with your overall direction.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private var idleHeader: some View {
-        HStack(alignment: .firstTextBaseline) {
+    @ViewBuilder
+    private var metricRow: some View {
+        if let point = selectedPoint {
+            scrubRow(for: point)
+        } else {
+            idleRow
+        }
+    }
+
+    private var idleRow: some View {
+        HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
-                if let latest = points.last {
+                if trend.hasData {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text(String(format: "%.2f", latest.speed))
-                            .font(.title2)
+                        Text(trend.averageSpeedText)
+                            .font(.title)
                             .fontWeight(.semibold)
                             .fontDesign(.rounded)
                             .monospacedDigit()
@@ -837,37 +782,29 @@ private struct TrendChartCard: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
-                    Text("Most recent · \(latest.paceText) \(unit.paceLabel)")
+                    Text("Average · \(trend.runCount) \(trend.runCount == 1 ? "run" : "runs")")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 } else {
                     Text("—")
-                        .font(.title2)
+                        .font(.title)
                         .foregroundStyle(.tertiary)
                 }
             }
             Spacer()
-            if let delta = deltaString(from: points.first, to: points.last) {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(delta)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(delta.hasPrefix("+") ? Color.green : .red)
-                        .monospacedDigit()
-                    Text("over period")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+            if trend.hasData {
+                TrendVerdictBadge(trend: trend, unit: unit)
             }
         }
     }
 
-    private func scrubHeader(for point: RunChartPoint) -> some View {
+    private func scrubRow(for point: RunChartPoint) -> some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(String(format: "%.2f", point.speed))
-                        .font(.title3)
+                        .font(.title2)
                         .fontWeight(.semibold)
                         .fontDesign(.rounded)
                         .monospacedDigit()
@@ -881,15 +818,30 @@ private struct TrendChartCard: View {
                     .monospacedDigit()
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(point.date, format: .dateTime.month(.abbreviated).day().year())
-                    .font(.caption)
+            Text(point.date, format: .dateTime.month(.abbreviated).day().year())
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var legend: some View {
+        HStack(spacing: 16) {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(Color.green.opacity(0.4))
+                    .frame(width: 7, height: 7)
+                Text("Each run")
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
-                if let delta = deltaString(from: points.first, to: point) {
-                    Text(delta)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(delta.hasPrefix("+") ? Color.green : .red)
-                        .monospacedDigit()
+            }
+            if trend.trendEnd != nil {
+                HStack(spacing: 5) {
+                    Capsule()
+                        .fill(Color.green)
+                        .frame(width: 16, height: 3)
+                    Text("Trend")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -897,48 +849,44 @@ private struct TrendChartCard: View {
 
     private var chart: some View {
         Chart {
-            ForEach(points) { point in
-                LineMark(
+            ForEach(trend.points) { point in
+                PointMark(
                     x: .value("Date", point.date),
                     y: .value(unit.speedLabel, point.speed)
                 )
-                .interpolationMethod(.monotone)
-                .foregroundStyle(Color.green)
-                .lineStyle(.init(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-
-                AreaMark(
-                    x: .value("Date", point.date),
-                    yStart: .value("Speed floor", speedDomain.lowerBound),
-                    yEnd: .value(unit.speedLabel, point.speed)
-                )
-                .interpolationMethod(.monotone)
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [Color.green.opacity(0.24), Color.green.opacity(0.04)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+                .foregroundStyle(Color.green.opacity(0.4))
+                .symbolSize(30)
             }
 
-            if let displayPoint {
-                RuleMark(x: .value("Selected date", displayPoint.date))
+            if let start = trend.trendStart, let end = trend.trendEnd {
+                ForEach([start, end]) { point in
+                    LineMark(
+                        x: .value("Date", point.date),
+                        y: .value(unit.speedLabel, point.speed)
+                    )
+                }
+                .foregroundStyle(Color.green)
+                .lineStyle(.init(lineWidth: 2.5, lineCap: .round))
+            }
+
+            if let selectedPoint {
+                RuleMark(x: .value("Selected date", selectedPoint.date))
                     .foregroundStyle(Color.secondary.opacity(0.5))
                     .lineStyle(.init(lineWidth: 1))
 
                 PointMark(
-                    x: .value("Selected date", displayPoint.date),
-                    y: .value(unit.speedLabel, displayPoint.speed)
+                    x: .value("Selected date", selectedPoint.date),
+                    y: .value(unit.speedLabel, selectedPoint.speed)
                 )
                 .foregroundStyle(Color(.systemBackground))
-                .symbolSize(58)
+                .symbolSize(70)
 
                 PointMark(
-                    x: .value("Selected date", displayPoint.date),
-                    y: .value(unit.speedLabel, displayPoint.speed)
+                    x: .value("Selected date", selectedPoint.date),
+                    y: .value(unit.speedLabel, selectedPoint.speed)
                 )
                 .foregroundStyle(Color.green)
-                .symbolSize(26)
+                .symbolSize(34)
             }
         }
         .chartYScale(domain: speedDomain)
@@ -979,11 +927,11 @@ private struct TrendChartCard: View {
             }
         }
         .overlay {
-            if points.isEmpty {
+            if trend.points.isEmpty {
                 ContentUnavailableView(
-                    "No \(record.target.displayName) runs",
+                    "No runs in this range",
                     systemImage: "chart.xyaxis.line",
-                    description: Text("Try a longer scope or log \(record.target.distanceCopy).")
+                    description: Text("Try a longer time range to see your speed trend.")
                 )
                 .background(Color(.systemBackground))
             }
@@ -991,12 +939,87 @@ private struct TrendChartCard: View {
     }
 
     private func selectNearestPoint(to date: Date) {
-        guard let nearest = points.min(by: {
+        guard let nearest = trend.points.min(by: {
             abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date))
         }) else { return }
 
         if selectedPoint?.id != nearest.id {
             selectedPoint = nearest
+        }
+    }
+}
+
+/// Plain-language read on the trend line's direction. Stays muted for "steady"
+/// and "building" so the colored verdicts (faster/slower) carry the signal.
+private struct TrendVerdictBadge: View {
+    let trend: RunSpeedTrend
+    let unit: SpeedUnit
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 3) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .imageScale(.small)
+                Text(word)
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(tint.opacity(0.15)))
+
+            if let detail {
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var icon: String {
+        switch trend.direction {
+        case .faster: return "arrow.up.right"
+        case .slower: return "arrow.down.right"
+        case .steady: return "arrow.left.and.right"
+        case .insufficient: return "chart.dots.scatter"
+        }
+    }
+
+    private var word: String {
+        switch trend.direction {
+        case .faster: return "Faster"
+        case .slower: return "Slower"
+        case .steady: return "Steady"
+        case .insufficient: return "Building"
+        }
+    }
+
+    private var tint: Color {
+        switch trend.direction {
+        case .faster: return .green
+        case .slower: return .orange
+        case .steady, .insufficient: return Color(.secondaryLabel)
+        }
+    }
+
+    private var detail: String? {
+        switch trend.direction {
+        case .faster: return "+\(trend.changeMagnitudeText) \(unit.speedLabel)"
+        case .slower: return "−\(trend.changeMagnitudeText) \(unit.speedLabel)"
+        case .steady: return "Little change"
+        case .insufficient: return "Need 5+ runs"
+        }
+    }
+
+    private var accessibilityText: String {
+        switch trend.direction {
+        case .faster: return "Trending faster, up \(trend.changeMagnitudeText) \(unit.speedLabel)"
+        case .slower: return "Trending slower, down \(trend.changeMagnitudeText) \(unit.speedLabel)"
+        case .steady: return "Holding steady"
+        case .insufficient: return "Building, need at least 5 runs to show a trend"
         }
     }
 }
@@ -1373,32 +1396,85 @@ struct RunHistoryStats {
         return map
     }
 
-    static func chartPoints(
+    /// Plots every run's average speed in scope and fits a least squares trend
+    /// line. The line is drawn at >=2 runs, but a faster/slower *verdict* is only
+    /// claimed at >=5 runs with a wide "steady" band, since run-to-run scatter is
+    /// large and a confident-but-wrong direction is worse than none.
+    static func speedTrend(
         from runs: [RunWorkout],
-        target: RunRecordTarget,
-        unit: SpeedUnit,
         scope: RunTrendScope,
+        unit: SpeedUnit,
         referenceDate: Date = Date()
-    ) -> [RunChartPoint] {
-        let lowerBound = scope.lowerBound(from: referenceDate, calendar: calendar)
-        let efforts = efforts(for: target, runs: runs, unit: unit)
-            .filter { effort in
-                guard let lowerBound else { return true }
-                return effort.date >= lowerBound
+    ) -> RunSpeedTrend {
+        let lower = scope.lowerBound(from: referenceDate, calendar: calendar)
+        let scoped: [RunWorkout]
+        if let lower {
+            scoped = runs.filter { $0.startDate >= lower && $0.startDate <= referenceDate }
+        } else {
+            scoped = runs
+        }
+
+        let points = scoped
+            .filter { $0.duration > 0 && $0.distanceMeters > 0 }
+            .sorted { $0.startDate < $1.startDate }
+            .map { run -> RunChartPoint in
+                let speed = unit == .mph ? run.averageSpeedMph : run.averageSpeedKph
+                let pace = unit == .mph ? run.paceMinutesPerMile : run.paceMinutesPerKilometer
+                let paceText = pace.flatMap { ConversionEngine.formatPace($0) } ?? "--"
+                return RunChartPoint(id: run.id.uuidString, date: run.startDate, speed: speed, paceText: paceText)
             }
 
-        let grouped = Dictionary(grouping: efforts) { calendar.startOfDay(for: $0.date) }
-        return grouped.compactMap { day, efforts in
-            guard let best = efforts.max(by: { $0.speed < $1.speed }) else { return nil }
-            let pace = best.durationMinutes / target.distance(for: unit)
-            return RunChartPoint(
-                id: "\(target.id)-\(Int(day.timeIntervalSince1970))",
-                date: day,
-                speed: best.speed,
-                paceText: ConversionEngine.formatPace(pace) ?? "--"
-            )
+        let speeds = points.map(\.speed)
+        let average = speeds.isEmpty ? 0 : speeds.reduce(0, +) / Double(speeds.count)
+
+        var trendStart: RunChartPoint?
+        var trendEnd: RunChartPoint?
+        var change = 0.0
+
+        if let first = points.first, let last = points.last, points.count >= 2 {
+            let origin = first.date.timeIntervalSince1970
+            let xs = points.map { ($0.date.timeIntervalSince1970 - origin) / 86_400.0 }
+            let n = Double(points.count)
+            let sumX = xs.reduce(0, +)
+            let sumY = speeds.reduce(0, +)
+            let sumXX = xs.reduce(0) { $0 + $1 * $1 }
+            let sumXY = zip(xs, speeds).reduce(0) { $0 + $1.0 * $1.1 }
+            let denominator = n * sumXX - sumX * sumX
+            if denominator != 0 {
+                let slope = (n * sumXY - sumX * sumY) / denominator
+                let intercept = (sumY - slope * sumX) / n
+                let lastX = xs.last ?? 0
+                let fittedStart = intercept
+                let fittedEnd = intercept + slope * lastX
+                change = fittedEnd - fittedStart
+                trendStart = RunChartPoint(id: "trend-start", date: first.date, speed: fittedStart, paceText: "")
+                trendEnd = RunChartPoint(id: "trend-end", date: last.date, speed: fittedEnd, paceText: "")
+            }
         }
-        .sorted { $0.date < $1.date }
+
+        let direction: RunTrendDirection
+        if points.count < 5 || trendEnd == nil {
+            direction = .insufficient
+        } else {
+            // Steady band: ~4% of average speed, with an absolute floor so it stays
+            // forgiving at low speeds. Anything inside reads as "holding steady".
+            let band = max(average * 0.04, unit == .mph ? 0.1 : 0.16)
+            if abs(change) < band {
+                direction = .steady
+            } else {
+                direction = change > 0 ? .faster : .slower
+            }
+        }
+
+        return RunSpeedTrend(
+            points: points,
+            trendStart: trendStart,
+            trendEnd: trendEnd,
+            averageSpeed: average,
+            changeOverPeriod: change,
+            direction: direction,
+            unit: unit
+        )
     }
 
     static func activitySummary(
@@ -1610,6 +1686,30 @@ struct RunChartPoint: Identifiable, Equatable {
     let date: Date
     let speed: Double
     let paceText: String
+}
+
+enum RunTrendDirection: Equatable {
+    case faster
+    case steady
+    case slower
+    case insufficient
+}
+
+/// Overall speed trend: one point per run (its average speed) plus a least
+/// squares best-fit line so the direction reads at a glance.
+struct RunSpeedTrend: Equatable {
+    let points: [RunChartPoint]
+    let trendStart: RunChartPoint?
+    let trendEnd: RunChartPoint?
+    let averageSpeed: Double
+    let changeOverPeriod: Double
+    let direction: RunTrendDirection
+    let unit: SpeedUnit
+
+    var hasData: Bool { points.isEmpty == false }
+    var runCount: Int { points.count }
+    var averageSpeedText: String { String(format: "%.2f", averageSpeed) }
+    var changeMagnitudeText: String { String(format: "%.2f", abs(changeOverPeriod)) }
 }
 
 struct RunHistorySummary: Equatable {
