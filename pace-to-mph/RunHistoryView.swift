@@ -146,6 +146,7 @@ private struct RunHistoryContent: View {
     let unit: SpeedUnit
 
     @State private var selectedTrendScope: RunTrendScope = .threeMonths
+    @State private var selectedTrendDistance: RunRecordTarget?
     @State private var selectedChartPoint: RunChartPoint?
     @State private var expandedWeekIDs: Set<String> = []
     @State private var selectedMode: RunHistoryMode
@@ -170,8 +171,27 @@ private struct RunHistoryContent: View {
         RunHistoryStats.personalRecordTargets(from: runs, unit: unit)
     }
 
-    private var speedTrend: RunSpeedTrend {
-        RunHistoryStats.speedTrend(from: runs, scope: selectedTrendScope, unit: unit)
+    private var distanceTrends: [RunDistanceTrend] {
+        RunHistoryStats.speedTrendsByDistance(from: runs, scope: selectedTrendScope, unit: unit)
+    }
+
+    private var availableTrendTargets: [RunRecordTarget] {
+        distanceTrends.map(\.target)
+    }
+
+    // Keep the picker honest as scope/unit change buckets in and out: hold the
+    // user's pick while it still has runs, otherwise fall back to their main
+    // event (the distance with the most runs in scope).
+    private var resolvedTrendDistance: RunRecordTarget? {
+        if let selectedTrendDistance, availableTrendTargets.contains(selectedTrendDistance) {
+            return selectedTrendDistance
+        }
+        return distanceTrends.max { $0.trend.runCount < $1.trend.runCount }?.target
+    }
+
+    private var selectedDistanceTrend: RunSpeedTrend? {
+        guard let resolvedTrendDistance else { return nil }
+        return distanceTrends.first { $0.target == resolvedTrendDistance }?.trend
     }
 
     private var activitySummary: RunActivitySummary {
@@ -263,6 +283,9 @@ private struct RunHistoryContent: View {
         .onChange(of: selectedTrendScope) { _, _ in
             selectedChartPoint = nil
         }
+        .onChange(of: resolvedTrendDistance) { _, _ in
+            selectedChartPoint = nil
+        }
     }
 
     @ViewBuilder
@@ -272,12 +295,21 @@ private struct RunHistoryContent: View {
         } else {
             Group {
                 TrendScopeMenu(scope: $selectedTrendScope)
-                SpeedTrendCard(
-                    trend: speedTrend,
-                    selectedPoint: $selectedChartPoint,
-                    scope: selectedTrendScope,
-                    unit: unit
-                )
+                if let resolved = resolvedTrendDistance, let trend = selectedDistanceTrend {
+                    SpeedTrendCard(
+                        trend: trend,
+                        availableTargets: availableTrendTargets,
+                        selectedDistance: Binding(
+                            get: { resolved },
+                            set: { selectedTrendDistance = $0 }
+                        ),
+                        selectedPoint: $selectedChartPoint,
+                        scope: selectedTrendScope,
+                        unit: unit
+                    )
+                } else {
+                    SpeedTrendEmptyCard()
+                }
                 ActivitySummaryCard(summary: activitySummary, scope: selectedTrendScope)
                 PersonalBestsGrid(records: records, unit: unit)
                 WeeklyVolumeCard(bars: volumeBars, scope: selectedTrendScope, unit: unit)
@@ -702,6 +734,8 @@ private struct PBCell: View {
 /// reads at a glance. Scrub the chart to inspect any single run.
 private struct SpeedTrendCard: View {
     let trend: RunSpeedTrend
+    let availableTargets: [RunRecordTarget]
+    @Binding var selectedDistance: RunRecordTarget
     @Binding var selectedPoint: RunChartPoint?
     let scope: RunTrendScope
     let unit: SpeedUnit
@@ -743,7 +777,7 @@ private struct SpeedTrendCard: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Speed Trend")
                     .font(.headline)
@@ -752,10 +786,19 @@ private struct SpeedTrendCard: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            Text("Average \(unit.speedLabel) for every run, with your overall direction.")
+            Text("Average \(unit.speedLabel) per \(selectedDistance.displayName) run, with your overall direction.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if availableTargets.count > 1 {
+                Picker("Distance", selection: $selectedDistance) {
+                    ForEach(availableTargets) { target in
+                        Text(target.shortLabel).tag(target)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityLabel("Distance")
+            }
         }
     }
 
@@ -812,15 +855,42 @@ private struct SpeedTrendCard: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                Text("\(point.paceText) \(unit.paceLabel)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+                HStack(spacing: 6) {
+                    Text("\(point.paceText) \(unit.paceLabel)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                    if let heartRate = point.avgHeartRate {
+                        HStack(spacing: 3) {
+                            Image(systemName: "bolt.heart")
+                                .imageScale(.small)
+                                .foregroundStyle(.pink)
+                            Text("\(heartRate)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Average heart rate \(heartRate) beats per minute")
+                    }
+                }
             }
             Spacer()
-            Text(point.date, format: .dateTime.month(.abbreviated).day().year())
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .trailing, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(point.distanceValueText)
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .fontDesign(.rounded)
+                        .monospacedDigit()
+                    Text(unit == .mph ? "mi" : "km")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Text(point.date, format: .dateTime.month(.abbreviated).day().year())
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -946,6 +1016,26 @@ private struct SpeedTrendCard: View {
         if selectedPoint?.id != nearest.id {
             selectedPoint = nearest
         }
+    }
+}
+
+/// Shown when no single distance has enough runs in scope to chart a trend —
+/// distinct from "no runs at all" so the runner knows what unlocks it.
+private struct SpeedTrendEmptyCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Speed Trend")
+                .font(.headline)
+            ContentUnavailableView(
+                "Not enough runs at one distance",
+                systemImage: "chart.xyaxis.line",
+                description: Text("Log at least 2 runs at the same distance (5K, 10K, and so on) to see how your speed is trending.")
+            )
+            .frame(maxWidth: .infinity)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
     }
 }
 
@@ -1429,15 +1519,49 @@ struct RunHistoryStats {
         } else {
             scoped = runs
         }
+        return speedTrend(forRuns: scoped, unit: unit)
+    }
 
-        let points = scoped
+    /// One Speed Trend chart per named distance (5K, 10K, …): runs are bucketed
+    /// by distance (±10% band) so each chart compares like-for-like efforts and
+    /// the trend line isn't confounded by whether you ran short or long lately.
+    /// A distance only appears once it has at least 2 runs in scope, and only
+    /// when it's relevant to the active unit (no "1 KM" chart for mph users).
+    /// Returned ascending by distance for a stable picker order.
+    static func speedTrendsByDistance(
+        from runs: [RunWorkout],
+        scope: RunTrendScope,
+        unit: SpeedUnit,
+        referenceDate: Date = Date()
+    ) -> [RunDistanceTrend] {
+        let lower = scope.lowerBound(from: referenceDate, calendar: calendar)
+        let scoped: [RunWorkout]
+        if let lower {
+            scoped = runs.filter { $0.startDate >= lower && $0.startDate <= referenceDate }
+        } else {
+            scoped = runs
+        }
+
+        return RunRecordTarget.allCases
+            .filter { $0.isVisible(in: unit) }
+            .compactMap { target in
+                let bucket = scoped.filter { target.containsDistance($0.distanceMeters) }
+                guard bucket.count >= 2 else { return nil }
+                return RunDistanceTrend(target: target, trend: speedTrend(forRuns: bucket, unit: unit))
+            }
+    }
+
+    private static func speedTrend(forRuns runs: [RunWorkout], unit: SpeedUnit) -> RunSpeedTrend {
+        let points = runs
             .filter { $0.duration > 0 && $0.distanceMeters > 0 }
             .sorted { $0.startDate < $1.startDate }
             .map { run -> RunChartPoint in
                 let speed = unit == .mph ? run.averageSpeedMph : run.averageSpeedKph
                 let pace = unit == .mph ? run.paceMinutesPerMile : run.paceMinutesPerKilometer
                 let paceText = pace.flatMap { ConversionEngine.formatPace($0) } ?? "--"
-                return RunChartPoint(id: run.id.uuidString, date: run.startDate, speed: speed, paceText: paceText)
+                let distance = unit == .mph ? run.distanceMiles : run.distanceKilometers
+                let distanceValueText = String(format: "%.2f", distance)
+                return RunChartPoint(id: run.id.uuidString, date: run.startDate, speed: speed, paceText: paceText, distanceValueText: distanceValueText, avgHeartRate: run.avgHeartRate)
             }
 
         let speeds = points.map(\.speed)
@@ -1463,8 +1587,8 @@ struct RunHistoryStats {
                 let fittedStart = intercept
                 let fittedEnd = intercept + slope * lastX
                 change = fittedEnd - fittedStart
-                trendStart = RunChartPoint(id: "trend-start", date: first.date, speed: fittedStart, paceText: "")
-                trendEnd = RunChartPoint(id: "trend-end", date: last.date, speed: fittedEnd, paceText: "")
+                trendStart = RunChartPoint(id: "trend-start", date: first.date, speed: fittedStart, paceText: "", distanceValueText: "", avgHeartRate: nil)
+                trendEnd = RunChartPoint(id: "trend-end", date: last.date, speed: fittedEnd, paceText: "", distanceValueText: "", avgHeartRate: nil)
             }
         }
 
@@ -1702,6 +1826,8 @@ struct RunChartPoint: Identifiable, Equatable {
     let date: Date
     let speed: Double
     let paceText: String
+    let distanceValueText: String
+    let avgHeartRate: Int?
 }
 
 enum RunTrendDirection: Equatable {
@@ -1726,6 +1852,15 @@ struct RunSpeedTrend: Equatable {
     var runCount: Int { points.count }
     var averageSpeedText: String { String(format: "%.2f", averageSpeed) }
     var changeMagnitudeText: String { String(format: "%.2f", abs(changeOverPeriod)) }
+}
+
+/// A Speed Trend scoped to a single named distance, used to drive the Trends
+/// tab's per-distance chart and its distance picker.
+struct RunDistanceTrend: Identifiable, Equatable {
+    let target: RunRecordTarget
+    let trend: RunSpeedTrend
+
+    var id: String { target.id }
 }
 
 struct RunHistorySummary: Equatable {
@@ -1951,6 +2086,13 @@ enum RunRecordTarget: String, CaseIterable, Identifiable {
         }
     }
 
+    /// A run counts toward this distance when it's within ±10% of the nominal
+    /// distance. At ±10% none of the named distances overlap, so a run lands in
+    /// at most one bucket; runs in the gaps belong to none.
+    func containsDistance(_ meters: Double) -> Bool {
+        abs(meters - self.meters) <= self.meters * 0.10
+    }
+
     func isVisible(in unit: SpeedUnit) -> Bool {
         switch (self, unit) {
         case (.oneMile, .kph), (.oneKilometer, .mph):
@@ -2141,7 +2283,9 @@ private enum RunHistoryPreviewData {
             run(daysAgo: 1, miles: 3.1, minutes: 25, avgHeartRate: 156),
             run(daysAgo: 3, miles: 4.0, minutes: 36, avgHeartRate: 151),
             run(daysAgo: 4, miles: 5.0, minutes: 42, avgHeartRate: 162),
+            run(daysAgo: 6, miles: 6.2, minutes: 53, avgHeartRate: 160),
             run(daysAgo: 8, miles: 6.2, minutes: 54, avgHeartRate: 159),
+            run(daysAgo: 20, miles: 6.2, minutes: 56, avgHeartRate: 158),
             run(daysAgo: 10, miles: 3.4, minutes: 30),
             run(daysAgo: 16, miles: 5.1, minutes: 45, avgHeartRate: 154),
             run(daysAgo: 30, miles: 3.1, minutes: 26, avgHeartRate: 150),
