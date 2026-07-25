@@ -70,6 +70,7 @@ struct SplitCalculatorView: View {
                     }
                     .padding(24)
                     .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 24))
+                    .autoFocus($isTimeFocused)
 
                     // Distance picker
                     distancePicker
