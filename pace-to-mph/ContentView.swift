@@ -33,6 +33,7 @@ struct ContentView: View {
                         .padding(.horizontal, 16)
                         .padding(.bottom, 8)
                 }
+                .autoFocus($isInputFocused)
                 .onTapGesture {
                     isInputFocused = false
                 }

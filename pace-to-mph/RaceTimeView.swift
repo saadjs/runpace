@@ -193,6 +193,7 @@ struct RaceTimeView: View {
         }
         .padding(24)
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 24))
+        .autoFocus($isPaceFocused)
     }
 
     private var timeInputCard: some View {
@@ -215,6 +216,7 @@ struct RaceTimeView: View {
         }
         .padding(24)
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 24))
+        .autoFocus($isTimeFocused)
     }
 
     private var accentRule: some View {
