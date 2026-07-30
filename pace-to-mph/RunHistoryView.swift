@@ -210,6 +210,13 @@ private struct RunHistoryContent: View {
         RunHistoryStats.summary(from: filteredRuns, unit: unit)
     }
 
+    private var cadence: RunCadence {
+        RunHistoryStats.cadence(
+            from: filteredRuns,
+            in: selectedFilter.interval(calendar: RunHistoryStats.calendar)
+        )
+    }
+
     private var filteredRuns: [RunWorkout] {
         runs.filter { selectedFilter.includes($0.startDate, calendar: RunHistoryStats.calendar) }
     }
@@ -248,7 +255,7 @@ private struct RunHistoryContent: View {
 
                     switch selectedMode {
                     case .runs:
-                        RunSummaryStrip(summary: summary, unit: unit)
+                        RunSummaryStrip(summary: summary, cadence: cadence, unit: unit)
                         if filteredRuns.isEmpty {
                             filteredEmptyView
                         } else {
@@ -312,7 +319,12 @@ private struct RunHistoryContent: View {
                 }
                 ActivitySummaryCard(summary: activitySummary, scope: selectedTrendScope)
                 PersonalBestsGrid(records: records, unit: unit)
-                WeeklyVolumeCard(bars: volumeBars, scope: selectedTrendScope, unit: unit)
+                WeeklyVolumeCard(
+                    bars: volumeBars,
+                    cadence: activitySummary.cadence,
+                    scope: selectedTrendScope,
+                    unit: unit
+                )
             }
             .tint(.green)
         }
@@ -464,22 +476,58 @@ private struct RunHistoryContent: View {
 
 private struct RunSummaryStrip: View {
     let summary: RunHistorySummary
+    let cadence: RunCadence
     let unit: SpeedUnit
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            RunSummaryMetric(value: summary.distanceText, label: unit == .mph ? "Total mi" : "Total km")
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 0) {
+                RunSummaryMetric(value: summary.distanceText, label: unit == .mph ? "Total mi" : "Total km")
 
-            Divider().frame(height: 44)
+                Divider().frame(height: 44)
 
-            RunSummaryMetric(value: summary.durationText, label: "Total time")
+                RunSummaryMetric(value: summary.durationText, label: "Total time")
 
-            Divider().frame(height: 44)
+                Divider().frame(height: 44)
 
-            RunSummaryMetric(value: summary.averageSpeedText, label: "Avg \(unit.speedLabel)", isAccent: true)
+                RunSummaryMetric(value: summary.averageSpeedText, label: "Avg \(unit.speedLabel)", isAccent: true)
+            }
+            .padding(.vertical, 16)
+
+            RunCadenceFooter(cadence: cadence)
         }
-        .padding(.vertical, 16)
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+    }
+}
+
+/// Run frequency stated in plain words under the totals — the "how often",
+/// which totals on their own never answer. Draws nothing when the window is
+/// too short for an average to differ from the total.
+private struct RunCadenceFooter: View {
+    let cadence: RunCadence
+
+    var body: some View {
+        if let averageText = cadence.averageText {
+            VStack(spacing: 0) {
+                Divider()
+                HStack(spacing: 6) {
+                    Image(systemName: "repeat")
+                        .imageScale(.small)
+                        .foregroundStyle(.green)
+                    Text(averageText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(cadence.accessibilityText ?? averageText)
+        }
     }
 }
 
@@ -584,6 +632,11 @@ private struct ActivitySummaryCard: View {
                     delta: nil
                 )
             }
+
+            // Negative insets let the divider run edge to edge inside the card.
+            RunCadenceFooter(cadence: summary.cadence)
+                .padding(.horizontal, -16)
+                .padding(.bottom, -6)
         }
         .padding(16)
         .frame(maxWidth: .infinity)
@@ -1116,6 +1169,7 @@ private struct TrendVerdictBadge: View {
 
 private struct WeeklyVolumeCard: View {
     let bars: [RunVolumeBar]
+    let cadence: RunCadence
     let scope: RunTrendScope
     let unit: SpeedUnit
 
@@ -1186,17 +1240,23 @@ private struct WeeklyVolumeCard: View {
         }
     }
 
+    /// Both averages divide by the scope's elapsed span — not by the number of
+    /// bars — so a period the runner sat out still counts against the average,
+    /// and the runs/wk here matches the one on the Activity card above.
     private var statsRow: some View {
         let total = bars.reduce(0.0) { $0 + $1.distance }
-        let average = bars.isEmpty ? 0 : total / Double(bars.count)
+        let isWeekly = scope.bucketing == .weekly
+        let periods = isWeekly ? cadence.weeks : cadence.months
+        let averageDistance = periods > 0 ? total / periods : 0
+        let averageRuns = isWeekly ? cadence.runsPerWeek : cadence.runsPerMonth
         let unitLabel = unit == .mph ? "mi" : "km"
-        let intervalLabel = scope.bucketing == .weekly ? "wk" : "mo"
+        let intervalLabel = isWeekly ? "wk" : "mo"
         return HStack(alignment: .top, spacing: 0) {
             statBlock(value: String(format: "%.1f", total), label: "Total \(unitLabel)")
             Divider().frame(height: 32)
-            statBlock(value: String(format: "%.1f", average), label: "Avg / \(intervalLabel)")
+            statBlock(value: String(format: "%.1f", averageDistance), label: "\(unitLabel) / \(intervalLabel)")
             Divider().frame(height: 32)
-            statBlock(value: "\(bars.count)", label: scope.bucketing == .weekly ? "Weeks" : "Months")
+            statBlock(value: String(format: "%.1f", averageRuns), label: "runs / \(intervalLabel)")
         }
         .frame(maxWidth: .infinity)
     }
@@ -1208,9 +1268,13 @@ private struct WeeklyVolumeCard: View {
                 .fontWeight(.semibold)
                 .fontDesign(.rounded)
                 .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity)
     }
@@ -1464,6 +1528,34 @@ struct RunHistoryStats {
         )
     }
 
+    /// How often the runner actually runs, as an average per week and per month
+    /// over an explicit window. Totals alone can't answer "am I running enough?" —
+    /// 40 runs reads very differently over a month than over a year.
+    ///
+    /// The window is clipped to `referenceDate` (counting the unfinished
+    /// remainder of this month would understate cadence) and floored at one
+    /// week / one month, so a three-day-old window can't claim 7 runs a week.
+    /// Pass `nil` for all time, which measures from the first run.
+    static func cadence(
+        from runs: [RunWorkout],
+        in interval: DateInterval?,
+        referenceDate: Date = Date()
+    ) -> RunCadence {
+        let windowStart = interval?.start ?? runs.map(\.startDate).min()
+        let windowEnd = min(interval?.end ?? referenceDate, referenceDate)
+
+        guard let windowStart, windowEnd > windowStart else {
+            return RunCadence(runCount: runs.count, weeks: 1, months: 1)
+        }
+
+        let days = windowEnd.timeIntervalSince(windowStart) / 86_400
+        return RunCadence(
+            runCount: runs.count,
+            weeks: max(days / 7, 1),
+            months: max(days / 30.436_875, 1)
+        )
+    }
+
     static func personalRecords(from runs: [RunWorkout], unit: SpeedUnit, referenceDate: Date = Date()) -> [RunPersonalRecord] {
         RunRecordTarget.allCases.filter { $0.isVisible(in: unit) }.compactMap { target in
             let efforts = efforts(for: target, runs: runs, unit: unit)
@@ -1649,6 +1741,8 @@ struct RunHistoryStats {
         let previousDistance = totalDistance(previousRuns, unit: unit)
         let previousDuration = previousRuns.reduce(0.0) { $0 + $1.duration }
 
+        let window = lower.map { DateInterval(start: $0, end: referenceDate) }
+
         return RunActivitySummary(
             runCount: currentRuns.count,
             distance: distance,
@@ -1656,6 +1750,7 @@ struct RunHistoryStats {
             previousRunCount: previousRuns.count,
             previousDistance: previousDistance,
             previousDuration: previousDuration,
+            cadence: cadence(from: currentRuns, in: window, referenceDate: referenceDate),
             unit: unit,
             hasPreviousPeriod: scope != .allTime
         )
@@ -1792,6 +1887,7 @@ struct RunActivitySummary: Equatable {
     let previousRunCount: Int
     let previousDistance: Double
     let previousDuration: TimeInterval
+    let cadence: RunCadence
     let unit: SpeedUnit
     let hasPreviousPeriod: Bool
 
@@ -1823,6 +1919,42 @@ struct RunVolumeBar: Identifiable, Equatable {
     let periodStart: Date
     let distance: Double
     let label: String
+}
+
+/// Average run frequency over a window. An average is only offered once the
+/// window is meaningfully longer than the unit it averages over: "3 runs/mo"
+/// across a single month is just the total wearing a different label.
+struct RunCadence: Equatable {
+    let runCount: Int
+    let weeks: Double
+    let months: Double
+
+    var runsPerWeek: Double { runCount == 0 ? 0 : Double(runCount) / weeks }
+    var runsPerMonth: Double { runCount == 0 ? 0 : Double(runCount) / months }
+
+    var runsPerWeekText: String { String(format: "%.1f", runsPerWeek) }
+    var runsPerMonthText: String { String(format: "%.1f", runsPerMonth) }
+
+    var hasWeeklyAverage: Bool { runCount > 0 && weeks >= 1.5 }
+    var hasMonthlyAverage: Bool { runCount > 0 && months >= 1.5 }
+
+    /// Compact one-liner for the summary cards, or nil when the window is too
+    /// short for either average to say anything the total doesn't.
+    var averageText: String? {
+        var parts: [String] = []
+        if hasWeeklyAverage { parts.append("\(runsPerWeekText) runs/wk") }
+        if hasMonthlyAverage { parts.append("\(runsPerMonthText) runs/mo") }
+        guard parts.isEmpty == false else { return nil }
+        return "Averaging " + parts.joined(separator: " · ")
+    }
+
+    var accessibilityText: String? {
+        var parts: [String] = []
+        if hasWeeklyAverage { parts.append("\(runsPerWeekText) runs per week") }
+        if hasMonthlyAverage { parts.append("\(runsPerMonthText) runs per month") }
+        guard parts.isEmpty == false else { return nil }
+        return "Averaging " + parts.joined(separator: ", ")
+    }
 }
 
 struct RunChartPoint: Identifiable, Equatable {
@@ -1995,6 +2127,24 @@ private enum RunHistoryFilter: Equatable {
             return String(year)
         case .allTime:
             return "All Time"
+        }
+    }
+
+    /// The span this filter covers, used as the denominator for run-frequency
+    /// averages. `nil` for all time, which measures from the first run instead.
+    func interval(calendar: Calendar, referenceDate: Date = Date()) -> DateInterval? {
+        switch self {
+        case .currentWeek:
+            return RunHistoryStats.currentWeekInterval(containing: referenceDate)
+        case .month(let monthStart):
+            return calendar.dateInterval(of: .month, for: monthStart)
+        case .year(let year):
+            guard let yearStart = calendar.date(from: DateComponents(year: year, month: 1, day: 1)) else {
+                return nil
+            }
+            return calendar.dateInterval(of: .year, for: yearStart)
+        case .allTime:
+            return nil
         }
     }
 
@@ -2282,22 +2432,45 @@ private enum RunHistoryPreviewData {
             )
         }
 
-        return [
-            run(daysAgo: 0, miles: 2.0, minutes: 18, avgHeartRate: 148),
-            run(daysAgo: 1, miles: 3.1, minutes: 25, avgHeartRate: 156),
-            run(daysAgo: 3, miles: 4.0, minutes: 36, avgHeartRate: 151),
-            run(daysAgo: 4, miles: 5.0, minutes: 42, avgHeartRate: 162),
-            run(daysAgo: 6, miles: 6.2, minutes: 53, avgHeartRate: 160),
-            run(daysAgo: 8, miles: 6.2, minutes: 54, avgHeartRate: 159),
-            run(daysAgo: 20, miles: 6.2, minutes: 56, avgHeartRate: 158),
-            run(daysAgo: 10, miles: 3.4, minutes: 30),
-            run(daysAgo: 16, miles: 5.1, minutes: 45, avgHeartRate: 154),
-            run(daysAgo: 30, miles: 3.1, minutes: 26, avgHeartRate: 150),
-            run(daysAgo: 65, miles: 7.5, minutes: 68, avgHeartRate: 165),
-            run(daysAgo: 110, miles: 3.1, minutes: 27, avgHeartRate: 149),
-            run(daysAgo: 390, miles: 4.2, minutes: 38, avgHeartRate: 158),
-            run(daysAgo: 420, miles: 3.1, minutes: 29, avgHeartRate: 153)
+        // Roughly 18 months of training so every scope — and the per-week and
+        // per-month averages that hang off them — has real spread to show:
+        // three runs most weeks, an easy 5K / a mid-week 10K / a long run, with
+        // the odd week skipped and a steady speed gain over time.
+        var runs: [RunWorkout] = []
+        let templates: [(offsetInWeek: Int, miles: Double, basePaceMinPerMile: Double, heartRate: Int?)] = [
+            (0, 3.1, 8.6, 150),   // easy 5K
+            (3, 6.2, 8.9, 159),   // mid-week 10K
+            (5, 9.0, 9.6, 164)    // weekend long run
         ]
+
+        for weeksAgo in 0..<78 {
+            // Skip a week here and there so the weekly average isn't a flat 3.0.
+            if weeksAgo % 7 == 4 { continue }
+            let improvement = Double(weeksAgo) * 0.006  // older runs are slower
+            let wobble = [0.0, 0.12, -0.08, 0.05, -0.14][weeksAgo % 5]
+
+            for template in templates {
+                // Drop the long run on lighter weeks.
+                if template.offsetInWeek == 5 && weeksAgo % 3 == 2 { continue }
+                let daysAgo = weeksAgo * 7 + (6 - template.offsetInWeek)
+                guard daysAgo > 0 || weeksAgo == 0 else { continue }
+                let pace = template.basePaceMinPerMile + improvement + wobble
+                runs.append(
+                    run(
+                        daysAgo: daysAgo,
+                        miles: template.miles,
+                        minutes: template.miles * pace,
+                        avgHeartRate: template.heartRate
+                    )
+                )
+            }
+        }
+
+        // A couple of runs this week so the current-week section is populated.
+        runs.append(run(daysAgo: 0, miles: 3.1, minutes: 25.0, avgHeartRate: 152))
+        runs.append(run(daysAgo: 2, miles: 6.2, minutes: 53.0, avgHeartRate: 158))
+
+        return runs.sorted { $0.startDate > $1.startDate }
     }()
 }
 
