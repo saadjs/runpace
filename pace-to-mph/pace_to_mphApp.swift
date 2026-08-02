@@ -33,12 +33,22 @@ private struct AppRootView: View {
             )
         } else {
             ContentView(healthKitService: healthKitService)
-                .task { await bootstrapHealthKit() }
+                .task {
+                    guard !isUITesting else { return }
+                    await bootstrapHealthKit()
+                }
         }
         #else
         ContentView(healthKitService: healthKitService)
-            .task { await bootstrapHealthKit() }
+            .task {
+                guard !isUITesting else { return }
+                await bootstrapHealthKit()
+            }
         #endif
+    }
+
+    private var isUITesting: Bool {
+        ProcessInfo.processInfo.arguments.contains("-uiTesting")
     }
 
     private func bootstrapHealthKit() async {
