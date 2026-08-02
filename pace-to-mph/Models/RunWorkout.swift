@@ -10,6 +10,29 @@ nonisolated struct RunWorkout: Identifiable, Hashable {
     /// Average heart rate in bpm, when the workout has it recorded. Apple Watch
     /// runs carry this; phone- or some third-party-logged runs may not.
     let avgHeartRate: Int?
+    /// Total ascent recorded for the workout. Some sources do not provide it,
+    /// so analytics must distinguish unavailable elevation from a true zero.
+    let elevationGainMeters: Double?
+
+    init(
+        id: UUID,
+        startDate: Date,
+        endDate: Date,
+        distanceMeters: Double,
+        duration: TimeInterval,
+        source: String,
+        avgHeartRate: Int?,
+        elevationGainMeters: Double? = nil
+    ) {
+        self.id = id
+        self.startDate = startDate
+        self.endDate = endDate
+        self.distanceMeters = distanceMeters
+        self.duration = duration
+        self.source = source
+        self.avgHeartRate = avgHeartRate
+        self.elevationGainMeters = elevationGainMeters
+    }
 
     var distanceMiles: Double { distanceMeters / 1609.34 }
     var distanceKilometers: Double { distanceMeters / 1000.0 }

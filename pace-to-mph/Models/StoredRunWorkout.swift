@@ -10,6 +10,7 @@ final class StoredRunWorkout {
     var duration: TimeInterval
     var source: String
     var avgHeartRate: Int?
+    var elevationGainMeters: Double?
     var syncedAt: Date
 
     init(run: RunWorkout, syncedAt: Date = Date()) {
@@ -20,6 +21,7 @@ final class StoredRunWorkout {
         duration = run.duration
         source = run.source
         avgHeartRate = run.avgHeartRate
+        elevationGainMeters = run.elevationGainMeters
         self.syncedAt = syncedAt
     }
 
@@ -32,7 +34,8 @@ final class StoredRunWorkout {
             distanceMeters: distanceMeters,
             duration: duration,
             source: source,
-            avgHeartRate: avgHeartRate
+            avgHeartRate: avgHeartRate,
+            elevationGainMeters: elevationGainMeters
         )
     }
 
@@ -44,6 +47,7 @@ final class StoredRunWorkout {
         duration = run.duration
         source = run.source
         avgHeartRate = run.avgHeartRate
+        elevationGainMeters = run.elevationGainMeters
         self.syncedAt = syncedAt
     }
 }

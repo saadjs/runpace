@@ -208,6 +208,10 @@ final class HealthKitService {
             bpm: workout.statistics(for: HKQuantityType(.heartRate))?
                 .averageQuantity()?.doubleValue(for: bpmUnit)
         )
+        let elevationGainMeters = normalizedElevationGain(
+            meters: (workout.metadata?[HKMetadataKeyElevationAscended] as? HKQuantity)?
+                .doubleValue(for: .meter())
+        )
 
         return RunWorkout(
             id: workout.uuid,
@@ -216,7 +220,8 @@ final class HealthKitService {
             distanceMeters: meters,
             duration: workout.duration,
             source: workout.sourceRevision.source.name,
-            avgHeartRate: avgHeartRate
+            avgHeartRate: avgHeartRate,
+            elevationGainMeters: elevationGainMeters
         )
     }
 
@@ -225,6 +230,13 @@ final class HealthKitService {
     nonisolated static func normalizedHeartRate(bpm: Double?) -> Int? {
         guard let bpm, bpm.isFinite, bpm > 0 else { return nil }
         return Int(bpm.rounded())
+    }
+
+    /// Rejects absent and corrupt ascent samples while preserving a legitimate
+    /// zero from flat treadmill or track workouts.
+    nonisolated static func normalizedElevationGain(meters: Double?) -> Double? {
+        guard let meters, meters.isFinite, meters >= 0 else { return nil }
+        return meters
     }
 
     // MARK: - Auto-import (background delivery)
