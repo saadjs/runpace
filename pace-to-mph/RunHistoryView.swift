@@ -6,6 +6,46 @@ private enum RunHistorySymbols {
     static let distance = "point.topleft.down.to.point.bottomright.curvepath"
 }
 
+/// Drag-to-inspect overlay shared by every trend chart. Each chart supplies how
+/// to turn a scrubbed date into a selection and how to clear it, so the plot
+/// frame math and gesture wiring live in exactly one place.
+private struct ChartScrubOverlay: View {
+    let proxy: ChartProxy
+    let onScrub: (Date) -> Void
+    let onEnd: () -> Void
+
+    var body: some View {
+        GeometryReader { geometry in
+            if let plotFrameAnchor = proxy.plotFrame {
+                let plotFrame = geometry[plotFrameAnchor]
+                Rectangle()
+                    .fill(.clear)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                let x = value.location.x - plotFrame.origin.x
+                                guard x >= 0, x <= plotFrame.width,
+                                      let date: Date = proxy.value(atX: x) else { return }
+                                onScrub(date)
+                            }
+                            .onEnded { _ in onEnd() }
+                    )
+            }
+        }
+    }
+}
+
+private extension Collection {
+    /// Element whose date sits closest to `date` — the shared "snap the scrub to
+    /// a real data point" rule behind every trend chart's selection.
+    func nearest(to date: Date, by dateKey: (Element) -> Date) -> Element? {
+        self.min {
+            abs(dateKey($0).timeIntervalSince(date)) < abs(dateKey($1).timeIntervalSince(date))
+        }
+    }
+}
+
 struct RunHistoryView: View {
     let service: HealthKitService
 
@@ -211,7 +251,7 @@ private struct RunHistoryContent: View {
     // Always derived from the full run set so every PR badge shows in the Runs
     // list regardless of the period filter or Trends tab selection.
     private var prBadgesByRunID: [UUID: [RunRecordTarget]] {
-        RunHistoryStats.personalRecordTargets(from: runs, unit: unit)
+        RunHistoryStats.personalRecordTargets(from: records)
     }
 
     private var distanceTrends: [RunDistanceTrend] {
@@ -238,7 +278,12 @@ private struct RunHistoryContent: View {
     }
 
     private var activitySummary: RunActivitySummary {
-        RunHistoryStats.activitySummary(from: runs, scope: selectedTrendScope, unit: unit)
+        RunHistoryStats.activitySummary(
+            from: runs,
+            scope: selectedTrendScope,
+            unit: unit,
+            records: records
+        )
     }
 
     private var volumeBars: [RunVolumeBar] {
@@ -585,14 +630,17 @@ private struct RunHistoryContent: View {
         }
     }
 
+    // Drops months that the new filter no longer shows, then guarantees at least
+    // one open card. The current month is re-opened on every filter change on
+    // purpose — matching the week list, a filter switch is a fresh look rather
+    // than a return to the previous expand/collapse state.
     private func normalizeMonthSelections() {
-        let validIDs = Set(months.map(\.id))
-        expandedMonthIDs.formIntersection(validIDs)
+        let months = self.months
+        expandedMonthIDs.formIntersection(Set(months.map(\.id)))
         expandedMonthIDs.formUnion(months.filter(\.isCurrentMonth).map(\.id))
         if expandedMonthIDs.isEmpty, let firstID = months.first?.id {
             expandedMonthIDs.insert(firstID)
         }
-
     }
 
     private var weekList: some View {
@@ -1007,10 +1055,7 @@ private struct PaceTrendCard: View {
 
     private var selectedPoint: RunPaceTrendPoint? {
         guard let selectedDate else { return nil }
-        return points.min {
-            abs($0.periodStart.timeIntervalSince(selectedDate))
-                < abs($1.periodStart.timeIntervalSince(selectedDate))
-        }
+        return points.nearest(to: selectedDate, by: \.periodStart)
     }
 
     private var paceDomain: ClosedRange<Double> {
@@ -1126,7 +1171,11 @@ private struct PaceTrendCard: View {
                     }
                 }
                 .chartOverlay { proxy in
-                    scrubOverlay(proxy: proxy)
+                    ChartScrubOverlay(
+                        proxy: proxy,
+                        onScrub: selectNearestPoint(to:),
+                        onEnd: { selectedDate = nil }
+                    )
                 }
                 .frame(height: 150)
                 .accessibilityLabel("Average pace trend, \(points.count) periods")
@@ -1141,32 +1190,8 @@ private struct PaceTrendCard: View {
         .onChange(of: points) { _, _ in selectedDate = nil }
     }
 
-    private func scrubOverlay(proxy: ChartProxy) -> some View {
-        GeometryReader { geometry in
-            if let plotFrameAnchor = proxy.plotFrame {
-                let plotFrame = geometry[plotFrameAnchor]
-                Rectangle()
-                    .fill(.clear)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                let x = value.location.x - plotFrame.origin.x
-                                guard x >= 0, x <= plotFrame.width,
-                                      let date: Date = proxy.value(atX: x) else { return }
-                                selectNearestPoint(to: date)
-                            }
-                            .onEnded { _ in selectedDate = nil }
-                    )
-            }
-        }
-    }
-
     private func selectNearestPoint(to date: Date) {
-        guard let nearest = points.min(by: {
-            abs($0.periodStart.timeIntervalSince(date))
-                < abs($1.periodStart.timeIntervalSince(date))
-        }) else { return }
+        guard let nearest = points.nearest(to: date, by: \.periodStart) else { return }
 
         if selectedPoint?.id != nearest.id {
             selectedDate = nearest.periodStart
@@ -1577,28 +1602,11 @@ private struct SpeedTrendCard: View {
             }
         }
         .chartOverlay { proxy in
-            GeometryReader { geometry in
-                if let plotFrameAnchor = proxy.plotFrame {
-                    let plotFrame = geometry[plotFrameAnchor]
-                    Rectangle()
-                        .fill(.clear)
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { value in
-                                    let x = value.location.x - plotFrame.origin.x
-                                    guard x >= 0, x <= plotFrame.width,
-                                          let date: Date = proxy.value(atX: x) else {
-                                        return
-                                    }
-                                    selectNearestPoint(to: date)
-                                }
-                                .onEnded { _ in
-                                    selectedPoint = nil
-                                }
-                        )
-                }
-            }
+            ChartScrubOverlay(
+                proxy: proxy,
+                onScrub: selectNearestPoint(to:),
+                onEnd: { selectedPoint = nil }
+            )
         }
         .overlay {
             if trend.points.isEmpty {
@@ -1613,9 +1621,7 @@ private struct SpeedTrendCard: View {
     }
 
     private func selectNearestPoint(to date: Date) {
-        guard let nearest = trend.points.min(by: {
-            abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date))
-        }) else { return }
+        guard let nearest = trend.points.nearest(to: date, by: \.date) else { return }
 
         if selectedPoint?.id != nearest.id {
             selectedPoint = nearest
@@ -1659,7 +1665,7 @@ private struct PaceTrendEmptyCard: View {
         .padding(16)
         .frame(maxWidth: .infinity)
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
-        .accessibilityIdentifier("run-history-pace-trend")
+        .accessibilityIdentifier("run-history-pace-trend-empty")
     }
 }
 
@@ -1748,10 +1754,7 @@ private struct WeeklyVolumeCard: View {
 
     private var selectedBar: RunVolumeBar? {
         guard let selectedDate else { return nil }
-        return bars.min {
-            abs($0.periodStart.timeIntervalSince(selectedDate))
-                < abs($1.periodStart.timeIntervalSince(selectedDate))
-        }
+        return bars.nearest(to: selectedDate, by: \.periodStart)
     }
 
     private var title: String {
@@ -1816,7 +1819,6 @@ private struct WeeklyVolumeCard: View {
                 .cornerRadius(4)
             }
 
-
             if let selectedBar {
                 RuleMark(
                     x: .value(
@@ -1842,37 +1844,21 @@ private struct WeeklyVolumeCard: View {
             }
         }
         .chartOverlay { proxy in
-            scrubOverlay(proxy: proxy)
+            ChartScrubOverlay(
+                proxy: proxy,
+                onScrub: selectNearestBar(to:),
+                onEnd: { selectedDate = nil }
+            )
         }
         .accessibilityIdentifier("run-history-volume-plot")
     }
 
-    private func scrubOverlay(proxy: ChartProxy) -> some View {
-        GeometryReader { geometry in
-            if let plotFrameAnchor = proxy.plotFrame {
-                let plotFrame = geometry[plotFrameAnchor]
-                Rectangle()
-                    .fill(.clear)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                let x = value.location.x - plotFrame.origin.x
-                                guard x >= 0, x <= plotFrame.width,
-                                      let date: Date = proxy.value(atX: x) else { return }
-                                selectNearestBar(to: date)
-                            }
-                            .onEnded { _ in selectedDate = nil }
-                    )
-            }
-        }
-    }
-
+    // Bars are drawn across a whole week/month, so snap on the bucket's midpoint
+    // rather than its start — otherwise the second half of a bar selects its
+    // neighbour.
     private func selectNearestBar(to date: Date) {
-        guard let nearest = bars.min(by: {
-            abs(bucketCenter(for: $0.periodStart).timeIntervalSince(date))
-                < abs(bucketCenter(for: $1.periodStart).timeIntervalSince(date))
-        }) else { return }
+        guard let nearest = bars.nearest(to: date, by: { bucketCenter(for: $0.periodStart) })
+        else { return }
 
         if selectedBar?.id != nearest.id {
             selectedDate = nearest.periodStart
@@ -2004,8 +1990,8 @@ private struct MonthAccordionList: View {
                         }
                     } label: {
                         MonthHeader(month: month, isExpanded: isExpanded)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(month.accessibilitySummary)
@@ -2069,7 +2055,6 @@ private struct MonthHeader: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 13)
     }
-
 }
 
 private struct ExpandedWeekSection: View {
@@ -2379,8 +2364,14 @@ struct RunHistoryStats {
         unit: SpeedUnit,
         referenceDate: Date = Date()
     ) -> [UUID: [RunRecordTarget]] {
+        personalRecordTargets(from: personalRecords(from: runs, unit: unit, referenceDate: referenceDate))
+    }
+
+    /// Overload for callers that already hold the records, so a single view
+    /// update never scans the full history for PRs more than once.
+    static func personalRecordTargets(from records: [RunPersonalRecord]) -> [UUID: [RunRecordTarget]] {
         var map: [UUID: [RunRecordTarget]] = [:]
-        for record in personalRecords(from: runs, unit: unit, referenceDate: referenceDate) {
+        for record in records {
             map[record.runID, default: []].append(record.target)
         }
         return map
@@ -2505,11 +2496,15 @@ struct RunHistoryStats {
         )
     }
 
+    /// `records` lets a caller that already computed the all-time PRs hand them
+    /// in rather than paying for a second full scan; omit it and they are
+    /// derived here.
     static func activitySummary(
         from runs: [RunWorkout],
         scope: RunTrendScope,
         unit: SpeedUnit,
-        referenceDate: Date = Date()
+        referenceDate: Date = Date(),
+        records: [RunPersonalRecord]? = nil
     ) -> RunActivitySummary {
         let lower = scope.lowerBound(from: referenceDate, calendar: calendar)
         let previousLower = scope.previousLowerBound(from: referenceDate, calendar: calendar)
@@ -2541,7 +2536,8 @@ struct RunHistoryStats {
             through: referenceDate
         )
         let currentRunIDs = Set(currentRuns.map(\.id))
-        let prHighlightTargets = personalRecords(from: runs, unit: unit, referenceDate: referenceDate)
+        let allRecords = records ?? personalRecords(from: runs, unit: unit, referenceDate: referenceDate)
+        let prHighlightTargets = allRecords
             .filter { currentRunIDs.contains($0.runID) }
             .map(\.target)
         let elevations = currentRuns.compactMap(\.elevationGainMeters)
@@ -2566,21 +2562,19 @@ struct RunHistoryStats {
         )
     }
 
+    /// Counts calendar weeks the way `activeWeekCount` does — by week *bucket*,
+    /// not by elapsed days — so a runner can never be shown more active weeks
+    /// than the scope contains.
     private static func calendarWeekCount(from startDate: Date?, through endDate: Date) -> Int {
         guard let startDate, startDate <= endDate else { return 1 }
 
-        let firstWeek = weekStart(containing: startDate)
-        let lastWeek = weekStart(containing: endDate)
-        var count = 1
-        var week = firstWeek
+        let weeksBetween = calendar.dateComponents(
+            [.weekOfYear],
+            from: weekStart(containing: startDate),
+            to: weekStart(containing: endDate)
+        ).weekOfYear ?? 0
 
-        while let nextWeek = calendar.date(byAdding: .weekOfYear, value: 1, to: week),
-              nextWeek <= lastWeek {
-            count += 1
-            week = nextWeek
-        }
-
-        return count
+        return max(1, weeksBetween + 1)
     }
 
     /// Weighted average pace by week/month for one named distance. Using the
@@ -2807,10 +2801,6 @@ struct RunActivitySummary: Equatable {
 
     var distanceText: String {
         String(format: "%.1f", distance)
-    }
-
-    var durationText: String {
-        RunHistoryFormatters.duration(duration)
     }
 
     var averagePaceMinutes: Double? {

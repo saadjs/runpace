@@ -106,8 +106,7 @@ final class pace_to_mphUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Avg /mi"].exists)
 
         let moreInsights = app.buttons["run-history-more-insights"]
-        XCTAssertTrue(scrollToElement(moreInsights, in: app))
-        moreInsights.tap()
+        tapAfterScrolling(moreInsights, in: app)
         XCTAssertTrue(element("run-history-training-highlights", in: app).waitForExistence(timeout: 5))
         let namedPBs = app.descendants(matching: .any).matching(
             NSPredicate(
@@ -115,24 +114,33 @@ final class pace_to_mphUITests: XCTestCase {
             )
         ).firstMatch
         XCTAssertTrue(namedPBs.exists)
-        moreInsights.tap()
+        tapAfterScrolling(moreInsights, in: app)
 
-        let paceButton = app.segmentedControls.buttons["Pace"]
-        XCTAssertTrue(scrollToElement(paceButton, in: app))
-        paceButton.tap()
-        let paceCard = element("run-history-pace-trend", in: app)
-        XCTAssertTrue(paceCard.waitForExistence(timeout: 5))
+        // Each tap re-lays out the scroll view, so scroll the next control back
+        // into view rather than assuming it held its position.
+        tapAfterScrolling(app.segmentedControls.buttons["Pace"], in: app)
+        XCTAssertTrue(element("run-history-pace-trend", in: app).waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Average /mi for your 5K runs only."].exists)
 
-        app.segmentedControls.buttons["10K"].tap()
+        tapAfterScrolling(app.segmentedControls.buttons["10K"], in: app)
         XCTAssertTrue(app.staticTexts["Average /mi for your 10K runs only."].waitForExistence(timeout: 3))
 
-        app.segmentedControls.buttons["Speed"].tap()
+        tapAfterScrolling(app.segmentedControls.buttons["Speed"], in: app)
         XCTAssertTrue(app.staticTexts["Average MPH per 10K run, with your overall direction."].waitForExistence(timeout: 3))
 
-        app.segmentedControls.buttons["Volume"].tap()
-        let volumeCard = element("run-history-volume-chart", in: app)
-        XCTAssertTrue(volumeCard.waitForExistence(timeout: 5))
+        tapAfterScrolling(app.segmentedControls.buttons["Volume"], in: app)
+        XCTAssertTrue(element("run-history-volume-chart", in: app).waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testEmptyRunHistoryShowsUnavailableStatesInBothTabs() throws {
+        let app = launchRunHistory(with: "-runHistoryDemoEmptyData")
+
+        XCTAssertTrue(app.staticTexts["No runs"].waitForExistence(timeout: 5))
+
+        app.segmentedControls.buttons["Trends"].tap()
+        XCTAssertTrue(app.staticTexts["Not enough data"].waitForExistence(timeout: 5))
+        XCTAssertFalse(element("run-history-period-comparison", in: app).exists)
     }
 
     @MainActor
@@ -145,8 +153,7 @@ final class pace_to_mphUITests: XCTestCase {
         XCTAssertTrue(element("run-history-speed-trend-empty", in: app).waitForExistence(timeout: 5))
 
         let moreInsights = app.buttons["run-history-more-insights"]
-        XCTAssertTrue(scrollToElement(moreInsights, in: app))
-        moreInsights.tap()
+        tapAfterScrolling(moreInsights, in: app)
         XCTAssertTrue(element("run-history-training-highlights", in: app).waitForExistence(timeout: 5))
         XCTAssertTrue(scrollToElement(app.staticTexts["No elevation data"], in: app))
     }
@@ -155,8 +162,15 @@ final class pace_to_mphUITests: XCTestCase {
     func testCrossYearEdgeDataSupportsAllTimeAccordion() throws {
         let app = launchRunHistory(with: "-runHistoryDemoEdgeData")
 
+        // The demo scenarios are generated relative to "now", so derive the
+        // expected month titles the same way instead of hardcoding years that
+        // would silently expire.
+        let currentYear = yearLabel(daysAgo: 0)
+        let oldestYear = yearLabel(daysAgo: Self.edgeDataOldestRunDaysAgo)
+        XCTAssertNotEqual(currentYear, oldestYear, "Edge demo data must span more than one year")
+
         XCTAssertTrue(app.segmentedControls.buttons["Year"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS '2026'")).firstMatch.exists)
+        XCTAssertTrue(monthCard(containing: currentYear, in: app).waitForExistence(timeout: 5))
 
         let yearMenu = element("run-history-year-filter", in: app)
         XCTAssertTrue(yearMenu.waitForExistence(timeout: 5))
@@ -164,7 +178,22 @@ final class pace_to_mphUITests: XCTestCase {
         XCTAssertTrue(app.buttons["All Time"].waitForExistence(timeout: 3))
         app.buttons["All Time"].tap()
 
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS '2024'")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(monthCard(containing: oldestYear, in: app).waitForExistence(timeout: 5))
+    }
+
+    /// Mirrors the oldest run in `RunHistoryPreviewData.edgeCaseRuns`. Keep in
+    /// sync if that scenario changes — the UI test runs out of process and
+    /// cannot read the app's demo data directly.
+    private static let edgeDataOldestRunDaysAgo = 740
+
+    private func yearLabel(daysAgo: Int) -> String {
+        let calendar = Calendar.current
+        let date = calendar.date(byAdding: .day, value: -daysAgo, to: Date()) ?? Date()
+        return String(calendar.component(.year, from: date))
+    }
+
+    private func monthCard(containing text: String, in app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
     }
 
     @MainActor
@@ -180,6 +209,17 @@ final class pace_to_mphUITests: XCTestCase {
         XCTAssertTrue(runHistory.waitForExistence(timeout: 3))
         runHistory.tap()
         return app
+    }
+
+    @MainActor
+    private func tapAfterScrolling(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertTrue(scrollToElement(element, in: app), "Could not reach element to tap", file: file, line: line)
+        element.tap()
     }
 
     @MainActor

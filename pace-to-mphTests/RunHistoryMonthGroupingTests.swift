@@ -44,6 +44,20 @@ struct RunHistoryMonthGroupingTests {
         #expect(months[0].title != months[1].title)
     }
 
+    @Test func monthTotalsFollowTheSelectedUnit() throws {
+        let march = try #require(calendar.date(from: DateComponents(year: 2026, month: 3, day: 5)))
+
+        let months = RunHistoryStats.months(
+            from: [run(on: march, miles: 6.21371, minutes: 60)],
+            unit: .kph,
+            referenceDate: march
+        )
+
+        let month = try #require(months.first)
+        #expect(month.distanceText == "10.0 km")
+        #expect(month.averageSpeedText == "10.00 KM/H")
+    }
+
     private func run(on date: Date, miles: Double = 3.1, minutes: Double = 30) -> RunWorkout {
         RunWorkout(
             id: UUID(),
