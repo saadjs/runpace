@@ -82,6 +82,51 @@ struct RunHistoryAnalyticsTests {
         #expect(summary.elevationGainText == "—")
     }
 
+    @Test func partialElevationIsLabeledInsteadOfPresentedAsComplete() {
+        let summary = RunHistoryStats.activitySummary(
+            from: [
+                run(daysAgo: 2, miles: 3.1, pace: 9, elevationMeters: 100),
+                run(daysAgo: 4, miles: 3.1, pace: 9, elevationMeters: nil)
+            ],
+            scope: .oneMonth,
+            unit: .kph,
+            referenceDate: reference
+        )
+
+        #expect(summary.elevationGainText == "100 m")
+        #expect(summary.hasElevationData)
+        #expect(summary.elevationGainLabel == "Partial elevation")
+    }
+
+    @Test func consistencyCountsTheCalendarWeeksIntersectingTheScope() throws {
+        let calendar = RunHistoryStats.calendar
+        let referenceDate = try #require(
+            calendar.date(from: DateComponents(year: 2026, month: 4, day: 1, hour: 12))
+        )
+        let runs = [31, 24, 17, 10, 3, 0].map { daysAgo in
+            let start = calendar.date(byAdding: .day, value: -daysAgo, to: referenceDate) ?? referenceDate
+            return RunWorkout(
+                id: UUID(),
+                startDate: start,
+                endDate: start.addingTimeInterval(30 * 60),
+                distanceMeters: 5_000,
+                duration: 30 * 60,
+                source: "Analytics Tests",
+                avgHeartRate: nil
+            )
+        }
+
+        let summary = RunHistoryStats.activitySummary(
+            from: runs,
+            scope: .oneMonth,
+            unit: .kph,
+            referenceDate: referenceDate
+        )
+
+        #expect(summary.activeWeekCount == 6)
+        #expect(summary.consistencyText == "6/6")
+    }
+
     @Test func paceTrendUsesWeeklyWeightedBucketsForShortScopes() throws {
         let points = RunHistoryStats.paceTrendPoints(
             from: [
@@ -151,7 +196,7 @@ struct RunHistoryAnalyticsTests {
         #expect(summary.runCount == 0)
         #expect(summary.averagePaceText == "—")
         #expect(summary.longestRunText == "0.0 mi")
-        #expect(summary.consistencyText == "0/13")
+        #expect(summary.consistencyText == "0/14")
         #expect(summary.prHighlightCount == 0)
         #expect(RunHistoryStats.paceTrendPoints(
             from: [],

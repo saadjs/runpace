@@ -934,7 +934,7 @@ private struct TrainingHighlightsCard: View {
                 )
                 highlight(
                     value: summary.elevationGainText,
-                    label: summary.hasElevationData ? "Elevation gain" : "No elevation data",
+                    label: summary.elevationGainLabel,
                     systemImage: "mountain.2",
                     tint: .orange
                 )
@@ -2536,6 +2536,10 @@ struct RunHistoryStats {
         let window = lower.map { DateInterval(start: $0, end: referenceDate) }
         let currentCadence = cadence(from: currentRuns, in: window, referenceDate: referenceDate)
         let activeWeekCount = Set(currentRuns.map { weekStart(containing: $0.startDate) }).count
+        let elapsedWeekCount = calendarWeekCount(
+            from: window?.start ?? currentRuns.map(\.startDate).min(),
+            through: referenceDate
+        )
         let currentRunIDs = Set(currentRuns.map(\.id))
         let prHighlightTargets = personalRecords(from: runs, unit: unit, referenceDate: referenceDate)
             .filter { currentRunIDs.contains($0.runID) }
@@ -2555,9 +2559,28 @@ struct RunHistoryStats {
             longestDistance: currentRuns.map { unit == .mph ? $0.distanceMiles : $0.distanceKilometers }.max() ?? 0,
             elevationGainMeters: elevations.reduce(0, +),
             hasElevationData: elevations.isEmpty == false,
+            elevationDataRunCount: elevations.count,
             activeWeekCount: activeWeekCount,
+            elapsedWeekCount: elapsedWeekCount,
             prHighlightTargets: prHighlightTargets
         )
+    }
+
+    private static func calendarWeekCount(from startDate: Date?, through endDate: Date) -> Int {
+        guard let startDate, startDate <= endDate else { return 1 }
+
+        let firstWeek = weekStart(containing: startDate)
+        let lastWeek = weekStart(containing: endDate)
+        var count = 1
+        var week = firstWeek
+
+        while let nextWeek = calendar.date(byAdding: .weekOfYear, value: 1, to: week),
+              nextWeek <= lastWeek {
+            count += 1
+            week = nextWeek
+        }
+
+        return count
     }
 
     /// Weighted average pace by week/month for one named distance. Using the
@@ -2771,7 +2794,9 @@ struct RunActivitySummary: Equatable {
     let longestDistance: Double
     let elevationGainMeters: Double
     let hasElevationData: Bool
+    let elevationDataRunCount: Int
     let activeWeekCount: Int
+    let elapsedWeekCount: Int
     let prHighlightTargets: [RunRecordTarget]
 
     var prHighlightCount: Int { prHighlightTargets.count }
@@ -2839,9 +2864,13 @@ struct RunActivitySummary: Equatable {
         return "\(Int(elevationGainMeters.rounded()).formatted()) m"
     }
 
+    var elevationGainLabel: String {
+        guard hasElevationData else { return "No elevation data" }
+        return elevationDataRunCount == runCount ? "Elevation gain" : "Partial elevation"
+    }
+
     var consistencyText: String {
-        let elapsedWeeks = max(1, Int(ceil(cadence.weeks)))
-        return "\(activeWeekCount)/\(elapsedWeeks)"
+        "\(activeWeekCount)/\(elapsedWeekCount)"
     }
 }
 
