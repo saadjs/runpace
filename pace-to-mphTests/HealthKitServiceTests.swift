@@ -50,10 +50,33 @@ struct HealthKitServiceTests {
         #expect(HealthKitService.normalizedHeartRate(bpm: .infinity) == nil)
     }
 
-    private func makeWorkout(distanceMeters: Double?, duration: TimeInterval) -> HKWorkout {
+    @Test func normalizedElevationAcceptsFlatRunsAndRejectsGarbage() {
+        #expect(HealthKitService.normalizedElevationGain(meters: 0) == 0)
+        #expect(HealthKitService.normalizedElevationGain(meters: 123.4) == 123.4)
+        #expect(HealthKitService.normalizedElevationGain(meters: nil) == nil)
+        #expect(HealthKitService.normalizedElevationGain(meters: -1) == nil)
+        #expect(HealthKitService.normalizedElevationGain(meters: .nan) == nil)
+        #expect(HealthKitService.normalizedElevationGain(meters: .infinity) == nil)
+    }
+
+    @Test func mapImportableWorkoutReadsElevationMetadata() throws {
+        let workout = makeWorkout(distanceMeters: 5_000, duration: 1_500, elevationMeters: 87.5)
+        let run = try #require(HealthKitService.mapImportableWorkout(workout))
+        #expect(run.elevationGainMeters == 87.5)
+    }
+
+    private func makeWorkout(
+        distanceMeters: Double?,
+        duration: TimeInterval,
+        elevationMeters: Double? = nil
+    ) -> HKWorkout {
         let start = Date(timeIntervalSince1970: 1_779_552_000)
         let end = start.addingTimeInterval(duration)
         let distance = distanceMeters.map { HKQuantity(unit: .meter(), doubleValue: $0) }
+
+        let metadata = elevationMeters.map {
+            [HKMetadataKeyElevationAscended: HKQuantity(unit: .meter(), doubleValue: $0)]
+        }
 
         return HKWorkout(
             activityType: .running,
@@ -62,7 +85,7 @@ struct HealthKitServiceTests {
             duration: duration,
             totalEnergyBurned: nil,
             totalDistance: distance,
-            metadata: nil
+            metadata: metadata
         )
     }
 }

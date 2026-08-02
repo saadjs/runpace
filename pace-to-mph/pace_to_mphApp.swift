@@ -27,9 +27,11 @@ private struct AppRootView: View {
 
     var body: some View {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-runHistoryPreview") {
+        if ProcessInfo.processInfo.arguments.contains("-runHistoryPreview")
+            || ProcessInfo.processInfo.arguments.contains("-runHistoryGroupingPrototypes") {
             RunHistoryDebugPreviewView(
-                showTrends: ProcessInfo.processInfo.arguments.contains("-runHistoryTrendsPreview")
+                showTrends: ProcessInfo.processInfo.arguments.contains("-runHistoryTrendsPreview"),
+                showYearGroupingPrototypes: ProcessInfo.processInfo.arguments.contains("-runHistoryGroupingPrototypes")
             )
         } else {
             ContentView(healthKitService: healthKitService)

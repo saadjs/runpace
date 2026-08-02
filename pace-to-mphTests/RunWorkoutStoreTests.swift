@@ -55,6 +55,21 @@ struct RunWorkoutStoreTests {
         #expect(persistedWithoutHR.avgHeartRate == nil)
     }
 
+    @Test func persistenceRoundTripPreservesElevationGain() throws {
+        let store = try makeStore()
+        let run = makeRun(
+            id: UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!,
+            distanceMeters: 5_000,
+            duration: 1_500,
+            elevationGainMeters: 123.5
+        )
+
+        try store.applyChanges(upserting: [run], deleting: [], anchorData: nil)
+
+        let persisted = try #require(try store.fetchRuns().first)
+        #expect(persisted.elevationGainMeters == 123.5)
+    }
+
     @Test func duplicateHealthKitUUIDUpsertsInsteadOfDoubleCounting() throws {
         let store = try makeStore()
         let id = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
@@ -160,7 +175,8 @@ struct RunWorkoutStoreTests {
         startDate: Date = Date(timeIntervalSince1970: 1_779_552_000),
         distanceMeters: Double,
         duration: TimeInterval,
-        avgHeartRate: Int? = nil
+        avgHeartRate: Int? = nil,
+        elevationGainMeters: Double? = nil
     ) -> RunWorkout {
         RunWorkout(
             id: id,
@@ -169,7 +185,8 @@ struct RunWorkoutStoreTests {
             distanceMeters: distanceMeters,
             duration: duration,
             source: "RunPace Tests",
-            avgHeartRate: avgHeartRate
+            avgHeartRate: avgHeartRate,
+            elevationGainMeters: elevationGainMeters
         )
     }
 }

@@ -93,6 +93,111 @@ final class pace_to_mphUITests: XCTestCase {
     }
 
     @MainActor
+    func testDenseRunHistoryAnalyticsEndToEnd() throws {
+        let app = launchRunHistory(with: "-runHistoryDemoDenseData")
+
+        XCTAssertTrue(app.navigationBars["Run History"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.segmentedControls.buttons["Year"].isSelected)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS 'run'")).firstMatch.exists)
+
+        app.segmentedControls.buttons["Trends"].tap()
+        XCTAssertTrue(element("run-history-speed-trend", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(element("run-history-period-comparison", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Avg /mi"].exists)
+
+        let moreInsights = app.buttons["run-history-more-insights"]
+        XCTAssertTrue(scrollToElement(moreInsights, in: app))
+        moreInsights.tap()
+        XCTAssertTrue(element("run-history-training-highlights", in: app).waitForExistence(timeout: 5))
+        let namedPBs = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "label CONTAINS[c] 'Personal best highlights' AND label CONTAINS[c] '1 mile'"
+            )
+        ).firstMatch
+        XCTAssertTrue(namedPBs.exists)
+        moreInsights.tap()
+
+        let paceButton = app.segmentedControls.buttons["Pace"]
+        XCTAssertTrue(scrollToElement(paceButton, in: app))
+        paceButton.tap()
+        let paceCard = element("run-history-pace-trend", in: app)
+        XCTAssertTrue(paceCard.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Average /mi for your 5K runs only."].exists)
+
+        app.segmentedControls.buttons["10K"].tap()
+        XCTAssertTrue(app.staticTexts["Average /mi for your 10K runs only."].waitForExistence(timeout: 3))
+
+        app.segmentedControls.buttons["Speed"].tap()
+        XCTAssertTrue(app.staticTexts["Average MPH per 10K run, with your overall direction."].waitForExistence(timeout: 3))
+
+        app.segmentedControls.buttons["Volume"].tap()
+        let volumeCard = element("run-history-volume-chart", in: app)
+        XCTAssertTrue(volumeCard.waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testSparseRunHistoryGracefullyShowsUnavailableAnalytics() throws {
+        let app = launchRunHistory(with: "-runHistoryDemoSparseData")
+
+        XCTAssertTrue(app.staticTexts["1 run"].waitForExistence(timeout: 5))
+        app.segmentedControls.buttons["Trends"].tap()
+
+        XCTAssertTrue(element("run-history-speed-trend-empty", in: app).waitForExistence(timeout: 5))
+
+        let moreInsights = app.buttons["run-history-more-insights"]
+        XCTAssertTrue(scrollToElement(moreInsights, in: app))
+        moreInsights.tap()
+        XCTAssertTrue(element("run-history-training-highlights", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(scrollToElement(app.staticTexts["No elevation data"], in: app))
+    }
+
+    @MainActor
+    func testCrossYearEdgeDataSupportsAllTimeAccordion() throws {
+        let app = launchRunHistory(with: "-runHistoryDemoEdgeData")
+
+        XCTAssertTrue(app.segmentedControls.buttons["Year"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS '2026'")).firstMatch.exists)
+
+        let yearMenu = element("run-history-year-filter", in: app)
+        XCTAssertTrue(yearMenu.waitForExistence(timeout: 5))
+        yearMenu.tap()
+        XCTAssertTrue(app.buttons["All Time"].waitForExistence(timeout: 3))
+        app.buttons["All Time"].tap()
+
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS '2024'")).firstMatch.waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    private func launchRunHistory(with seedArgument: String) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = [seedArgument]
+        app.launch()
+
+        let toolsMenu = app.buttons["Tools menu"]
+        XCTAssertTrue(toolsMenu.waitForExistence(timeout: 5))
+        toolsMenu.tap()
+        let runHistory = app.buttons["Run History"]
+        XCTAssertTrue(runHistory.waitForExistence(timeout: 3))
+        runHistory.tap()
+        return app
+    }
+
+    @MainActor
+    private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        for _ in 0..<20 {
+            if element.exists && element.isHittable { return true }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.82))
+            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.20))
+            start.press(forDuration: 0.01, thenDragTo: end)
+        }
+        return element.exists
+    }
+
+    private func element(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)[identifier]
+    }
+
+    @MainActor
     private func dismissKeyboard(in app: XCUIApplication) {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)).tap()
     }
