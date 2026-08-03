@@ -349,39 +349,43 @@ private struct RunHistoryContent: View {
         return years.sorted(by: >).map(RunHistoryYearFilter.year) + [.allTime]
     }
 
+    // Deliberately not wrapped in a `GlassEffectContainer`. A container gives
+    // every enclosed `.glassEffect` one shared sampling/blend scope, so any card
+    // animating its height — an accordion expanding — invalidates the glass of
+    // its neighbours too, which read as a flicker on the already-open card.
+    // Containers are for small clusters of glass that should merge or morph
+    // (a toolbar, a chip row), not for a long scroll of independent cards.
     var body: some View {
-        GlassEffectContainer {
-            ScrollView {
-                LazyVStack(spacing: 16) {
-                    header
+        ScrollView {
+            LazyVStack(spacing: 16) {
+                header
 
-                    switch selectedMode {
-                    case .runs:
-                        RunSummaryStrip(summary: summary, cadence: cadence, unit: unit)
-                        if filteredRuns.isEmpty {
-                            filteredEmptyView
+                switch selectedMode {
+                case .runs:
+                    RunSummaryStrip(summary: summary, cadence: cadence, unit: unit)
+                    if filteredRuns.isEmpty {
+                        filteredEmptyView
+                    } else {
+                        if selectedPeriod == .year {
+                            MonthAccordionList(
+                                months: months,
+                                unit: unit,
+                                prBadgesByRunID: prBadgesByRunID,
+                                expandedMonthIDs: $expandedMonthIDs
+                            )
                         } else {
-                            if selectedPeriod == .year {
-                                MonthAccordionList(
-                                    months: months,
-                                    unit: unit,
-                                    prBadgesByRunID: prBadgesByRunID,
-                                    expandedMonthIDs: $expandedMonthIDs
-                                )
-                            } else {
-                                weekList
-                            }
+                            weekList
                         }
-                    case .trends:
-                        trendsBody
                     }
+                case .trends:
+                    trendsBody
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 16)
-                .padding(.bottom, 32)
             }
-            .scrollIndicators(.hidden)
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+            .padding(.bottom, 32)
         }
+        .scrollIndicators(.hidden)
         .sensoryFeedback(.selection, trigger: selectedChartPoint?.id)
         .onAppear {
             normalizePeriodSelections()
@@ -1994,7 +1998,9 @@ private struct MonthAccordionList: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("run-history-month-card-\(month.id)")
                     .accessibilityLabel(month.accessibilitySummary)
+                    .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
                     .accessibilityHint(isExpanded ? "Collapse month" : "Expand month")
 
                     if isExpanded {

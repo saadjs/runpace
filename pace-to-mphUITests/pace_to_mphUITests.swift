@@ -181,6 +181,67 @@ final class pace_to_mphUITests: XCTestCase {
         XCTAssertTrue(monthCard(containing: oldestYear, in: app).waitForExistence(timeout: 5))
     }
 
+    /// Expanding one month card must leave every other card's expansion state
+    /// untouched. Regression cover for the Year view, where a scroll-wide
+    /// `GlassEffectContainer` made the already-open first card re-render when a
+    /// sibling animated open.
+    @MainActor
+    func testExpandingSecondMonthLeavesFirstMonthExpanded() throws {
+        let app = launchRunHistory(with: "-runHistoryDemoCompactData")
+
+        XCTAssertTrue(app.segmentedControls.buttons["Year"].waitForExistence(timeout: 5))
+
+        let cards = monthCards(in: app)
+        XCTAssertTrue(cards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(
+            cards.count,
+            2,
+            "Compact demo data must span at least two months for this test to mean anything"
+        )
+
+        let first = cards.element(boundBy: 0)
+        let second = cards.element(boundBy: 1)
+
+        // The most recent month opens by default; everything below it starts closed.
+        let firstLabel = first.label
+        XCTAssertEqual(first.value as? String, "Expanded")
+        XCTAssertEqual(second.value as? String, "Collapsed")
+
+        second.tap()
+
+        XCTAssertTrue(
+            waitForValue("Expanded", on: second),
+            "Tapping the second month card did not expand it"
+        )
+        XCTAssertEqual(
+            first.value as? String,
+            "Expanded",
+            "Expanding the second month collapsed or reset the first"
+        )
+        XCTAssertEqual(
+            first.label,
+            firstLabel,
+            "Expanding the second month rebuilt the first card's summary"
+        )
+
+        // And collapsing again is still independent.
+        second.tap()
+        XCTAssertTrue(waitForValue("Collapsed", on: second))
+        XCTAssertEqual(first.value as? String, "Expanded")
+    }
+
+    private func monthCards(in app: XCUIApplication) -> XCUIElementQuery {
+        app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "run-history-month-card-")
+        )
+    }
+
+    private func waitForValue(_ expected: String, on element: XCUIElement) -> Bool {
+        let predicate = NSPredicate(format: "value == %@", expected)
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+        return XCTWaiter().wait(for: [expectation], timeout: 5) == .completed
+    }
+
     /// Mirrors the oldest run in `RunHistoryPreviewData.edgeCaseRuns`. Keep in
     /// sync if that scenario changes — the UI test runs out of process and
     /// cannot read the app's demo data directly.
