@@ -2,8 +2,14 @@ import Charts
 import SwiftUI
 import SwiftData
 
+// One symbol per metric so a stat reads the same wherever it appears.
 private enum RunHistorySymbols {
     static let distance = "point.topleft.down.to.point.bottomright.curvepath"
+    static let duration = "stopwatch"
+    static let speed = "speedometer"
+    static let pace = "gauge.with.dots.needle.67percent"
+    static let runs = "figure.run"
+    static let heartRate = "bolt.heart"
 }
 
 /// Drag-to-inspect overlay shared by every trend chart. Each chart supplies how
@@ -389,17 +395,20 @@ private struct RunHistoryContent: View {
         .sensoryFeedback(.selection, trigger: selectedChartPoint?.id)
         .onAppear {
             normalizePeriodSelections()
-            expandedWeekIDs = Set(weeks.filter(\.isCurrentWeek).map(\.id))
+            resetWeekExpansion()
             normalizeMonthSelections()
         }
         .onChange(of: runs) { _, _ in
             normalizePeriodSelections()
-            expandedWeekIDs.formUnion(weeks.filter(\.isCurrentWeek).map(\.id))
+            expandedWeekIDs.formUnion(defaultExpandedWeekIDs)
             normalizeMonthSelections()
+        }
+        .onChange(of: selectedPeriod) { _, _ in
+            resetWeekExpansion()
         }
         .onChange(of: selectedFilter) { _, _ in
             selectedChartPoint = nil
-            expandedWeekIDs = Set(weeks.filter(\.isCurrentWeek).map(\.id))
+            resetWeekExpansion()
             normalizeMonthSelections()
         }
         .onChange(of: unit) { _, _ in
@@ -647,6 +656,19 @@ private struct RunHistoryContent: View {
         }
     }
 
+    // The Month tab is a whole-month read, so every week opens and the runs sit
+    // together; Week/Year keep the current week as the only open card.
+    private var defaultExpandedWeekIDs: Set<String> {
+        if selectedPeriod == .month {
+            return Set(weeks.map(\.id))
+        }
+        return Set(weeks.filter(\.isCurrentWeek).map(\.id))
+    }
+
+    private func resetWeekExpansion() {
+        expandedWeekIDs = defaultExpandedWeekIDs
+    }
+
     private var weekList: some View {
         LazyVStack(spacing: 12) {
             ForEach(weeks) { week in
@@ -690,11 +712,20 @@ private struct RunSummaryStrip: View {
 
                 Divider().frame(height: 44)
 
-                RunSummaryMetric(value: summary.durationText, label: "Total time")
+                RunSummaryMetric(
+                    value: summary.durationText,
+                    label: "Total time",
+                    systemImage: RunHistorySymbols.duration
+                )
 
                 Divider().frame(height: 44)
 
-                RunSummaryMetric(value: summary.averageSpeedText, label: "Avg \(unit.speedLabel)", isAccent: true)
+                RunSummaryMetric(
+                    value: summary.averageSpeedText,
+                    label: "Avg \(unit.speedLabel)",
+                    systemImage: RunHistorySymbols.speed,
+                    isAccent: true
+                )
             }
             .padding(.vertical, 16)
 
@@ -844,7 +875,8 @@ private struct ActivitySummaryCard: View {
                 metric(
                     value: "\(summary.runCount)",
                     label: summary.runCount == 1 ? "Run" : "Runs",
-                    delta: runCountDeltaText
+                    delta: runCountDeltaText,
+                    systemImage: RunHistorySymbols.runs
                 )
 
                 Divider().frame(height: 56)
@@ -863,7 +895,7 @@ private struct ActivitySummaryCard: View {
                     value: summary.averagePaceText,
                     label: "Avg \(summary.unit.paceLabel)",
                     delta: paceDeltaText,
-                    systemImage: "gauge.with.dots.needle.67percent"
+                    systemImage: RunHistorySymbols.pace
                 )
             }
 
@@ -1107,7 +1139,7 @@ private struct PaceTrendCard: View {
             if points.isEmpty {
                 ContentUnavailableView(
                     "No pace data",
-                    systemImage: "gauge.with.dots.needle.67percent",
+                    systemImage: RunHistorySymbols.pace,
                     description: Text("Try a longer time range to chart your average pace.")
                 )
                 .frame(maxWidth: .infinity, minHeight: 130)
@@ -1208,6 +1240,9 @@ private struct PaceTrendCard: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Image(systemName: RunHistorySymbols.pace)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         Text(selectedPoint.paceText)
                             .font(.title2.weight(.semibold))
                             .fontDesign(.rounded)
@@ -1476,6 +1511,9 @@ private struct SpeedTrendCard: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Image(systemName: RunHistorySymbols.speed)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Text(String(format: "%.2f", point.speed))
                         .font(.title2)
                         .fontWeight(.semibold)
@@ -1486,13 +1524,13 @@ private struct SpeedTrendCard: View {
                         .foregroundStyle(.secondary)
                 }
                 HStack(spacing: 6) {
-                    Text("\(point.paceText) \(unit.paceLabel)")
+                    Label("\(point.paceText) \(unit.paceLabel)", systemImage: RunHistorySymbols.pace)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                     if let heartRate = point.avgHeartRate {
                         HStack(spacing: 3) {
-                            Image(systemName: "bolt.heart")
+                            Image(systemName: RunHistorySymbols.heartRate)
                                 .imageScale(.small)
                                 .foregroundStyle(.pink)
                             Text("\(heartRate)")
@@ -1661,7 +1699,7 @@ private struct PaceTrendEmptyCard: View {
                 .font(.headline)
             ContentUnavailableView(
                 "Not enough runs at one distance",
-                systemImage: "gauge.with.dots.needle.67percent",
+                systemImage: RunHistorySymbols.pace,
                 description: Text("Log at least 2 runs near the same named distance to compare pace.")
             )
             .frame(maxWidth: .infinity)
@@ -1894,13 +1932,14 @@ private struct WeeklyVolumeCard: View {
                 Divider().frame(height: 32)
                 statBlock(
                     value: "\(bar.runCount)",
-                    label: bar.runCount == 1 ? "run" : "runs"
+                    label: bar.runCount == 1 ? "run" : "runs",
+                    systemImage: RunHistorySymbols.runs
                 )
                 Divider().frame(height: 32)
                 statBlock(
                     value: bar.paceText,
                     label: "avg \(unit.paceLabel)",
-                    systemImage: "gauge.with.dots.needle.67percent"
+                    systemImage: RunHistorySymbols.pace
                 )
             }
         }
@@ -1940,7 +1979,11 @@ private struct WeeklyVolumeCard: View {
                 systemImage: RunHistorySymbols.distance
             )
             Divider().frame(height: 32)
-            statBlock(value: String(format: "%.1f", averageRuns), label: "runs / \(intervalLabel)")
+            statBlock(
+                value: String(format: "%.1f", averageRuns),
+                label: "runs / \(intervalLabel)",
+                systemImage: RunHistorySymbols.runs
+            )
         }
         .frame(maxWidth: .infinity)
     }
@@ -2049,7 +2092,7 @@ private struct MonthHeader: View {
             HStack(spacing: 8) {
                 Label(month.distanceText, systemImage: RunHistorySymbols.distance)
                 Text("·")
-                Text("Avg \(month.averageSpeedText)")
+                Label("Avg \(month.averageSpeedText)", systemImage: RunHistorySymbols.speed)
                 Spacer(minLength: 0)
             }
             .font(.footnote)
@@ -2156,7 +2199,7 @@ private struct WeekHeader: View {
 
             HStack(spacing: 12) {
                 Label(week.distanceText, systemImage: RunHistorySymbols.distance)
-                Text("Avg \(week.averageSpeedText)")
+                Label("Avg \(week.averageSpeedText)", systemImage: RunHistorySymbols.speed)
             }
             .font(.footnote)
             .foregroundStyle(.secondary)
@@ -2238,13 +2281,15 @@ private struct RunHistoryRow: View {
                 }
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Label(distanceText, systemImage: RunHistorySymbols.distance)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
 
-                Text("\(paceText) \(unit.paceLabel)")
+                Label("\(paceText) \(unit.paceLabel)", systemImage: RunHistorySymbols.pace)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -2253,7 +2298,7 @@ private struct RunHistoryRow: View {
 
                 if let heartRate = run.avgHeartRate {
                     HStack(spacing: 3) {
-                        Image(systemName: "bolt.heart")
+                        Image(systemName: RunHistorySymbols.heartRate)
                             .imageScale(.small)
                             .foregroundStyle(.pink)
                         Text("\(heartRate)")
@@ -2269,7 +2314,7 @@ private struct RunHistoryRow: View {
 
                 Spacer(minLength: 8)
 
-                Text(durationText)
+                Label(durationText, systemImage: RunHistorySymbols.duration)
                     .font(.footnote)
                     .foregroundStyle(.tertiary)
                     .monospacedDigit()
@@ -3043,8 +3088,8 @@ private enum RunTrendMetric: String, CaseIterable, Hashable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .speed: return "speedometer"
-        case .pace: return "gauge.with.dots.needle.67percent"
+        case .speed: return RunHistorySymbols.speed
+        case .pace: return RunHistorySymbols.pace
         case .volume: return RunHistorySymbols.distance
         }
     }
