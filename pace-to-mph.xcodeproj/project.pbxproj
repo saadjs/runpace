@@ -497,6 +497,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = RunPace;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "RunPace reads your running workouts and their heart rate from Apple Health to display pace, speed, and average heart rate per run.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "RunPace does not write to Apple Health.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -533,6 +534,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = RunPace;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "RunPace reads your running workouts and their heart rate from Apple Health to display pace, speed, and average heart rate per run.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "RunPace does not write to Apple Health.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
