@@ -178,7 +178,10 @@ final class pace_to_mphUITests: XCTestCase {
         XCTAssertTrue(app.buttons["All Time"].waitForExistence(timeout: 3))
         app.buttons["All Time"].tap()
 
-        XCTAssertTrue(monthCard(containing: oldestYear, in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            scrollToElement(monthCard(containing: oldestYear, in: app), in: app),
+            "Could not reach the oldest year after switching to All Time"
+        )
     }
 
     /// Expanding one month card must leave every other card's expansion state
