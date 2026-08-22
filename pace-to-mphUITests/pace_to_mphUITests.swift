@@ -93,6 +93,36 @@ final class pace_to_mphUITests: XCTestCase {
     }
 
     @MainActor
+    func testReadmeScreenshots() throws {
+        let converter = XCUIApplication()
+        converter.launchArguments.append("-uiTesting")
+        converter.launch()
+
+        let paceField = converter.textFields.firstMatch
+        XCTAssertTrue(paceField.waitForExistence(timeout: 3))
+        paceField.tap()
+        paceField.typeText("7:30\n")
+        XCTAssertTrue(converter.keyboards.firstMatch.waitForNonExistence(timeout: 3))
+        sleep(1)
+        addScreenshot(named: "readme-converter")
+        converter.terminate()
+
+        let history = launchRunHistory(with: "-runHistoryDemoCompactData")
+        XCTAssertTrue(history.navigationBars["Run History"].waitForExistence(timeout: 5))
+        XCTAssertTrue(history.staticTexts["10 runs"].exists)
+        sleep(1)
+        addScreenshot(named: "readme-run-history")
+
+        history.segmentedControls.buttons["Trends"].tap()
+        XCTAssertTrue(element("run-history-speed-trend", in: history).waitForExistence(timeout: 5))
+        XCTAssertTrue(history.staticTexts["Average · 6 runs"].exists)
+        XCTAssertTrue(history.staticTexts["Faster"].exists)
+        history.swipeUp()
+        sleep(3)
+        addScreenshot(named: "readme-speed-trends")
+    }
+
+    @MainActor
     func testDenseRunHistoryAnalyticsEndToEnd() throws {
         let app = launchRunHistory(with: "-runHistoryDemoDenseData")
 
@@ -281,6 +311,13 @@ final class pace_to_mphUITests: XCTestCase {
 
     private func monthCard(containing text: String, in app: XCUIApplication) -> XCUIElement {
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+    }
+
+    private func addScreenshot(named name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     @MainActor
