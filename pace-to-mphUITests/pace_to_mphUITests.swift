@@ -93,6 +93,36 @@ final class pace_to_mphUITests: XCTestCase {
     }
 
     @MainActor
+    func testReadmeScreenshots() throws {
+        let converter = XCUIApplication()
+        converter.launchArguments.append("-uiTesting")
+        converter.launch()
+
+        let paceField = converter.textFields.firstMatch
+        XCTAssertTrue(paceField.waitForExistence(timeout: 3))
+        paceField.tap()
+        paceField.typeText("7:30\n")
+        XCTAssertTrue(converter.keyboards.firstMatch.waitForNonExistence(timeout: 3))
+        sleep(1)
+        addScreenshot(named: "readme-converter")
+        converter.terminate()
+
+        let history = launchRunHistory(with: "-runHistoryDemoCompactData")
+        XCTAssertTrue(history.navigationBars["Run History"].waitForExistence(timeout: 5))
+        XCTAssertTrue(history.staticTexts["10 runs"].exists)
+        sleep(1)
+        addScreenshot(named: "readme-run-history")
+
+        history.segmentedControls.buttons["Trends"].tap()
+        XCTAssertTrue(element("run-history-speed-trend", in: history).waitForExistence(timeout: 5))
+        XCTAssertTrue(history.staticTexts["Average · 6 runs"].exists)
+        XCTAssertTrue(history.staticTexts["Faster"].exists)
+        history.swipeUp()
+        sleep(3)
+        addScreenshot(named: "readme-speed-trends")
+    }
+
+    @MainActor
     func testDenseRunHistoryAnalyticsEndToEnd() throws {
         let app = launchRunHistory(with: "-runHistoryDemoDenseData")
 
@@ -125,11 +155,32 @@ final class pace_to_mphUITests: XCTestCase {
         tapAfterScrolling(app.segmentedControls.buttons["10K"], in: app)
         XCTAssertTrue(app.staticTexts["Average /mi for your 10K runs only."].waitForExistence(timeout: 3))
 
+        // Switching distance makes the taller Pace card push the metric picker
+        // above the lazy viewport. Return to the top before finding it again.
+        for _ in 0..<6 { app.swipeDown() }
+        XCTAssertTrue(scrollToElement(element("run-history-trend-metric", in: app), in: app))
         tapAfterScrolling(app.segmentedControls.buttons["Speed"], in: app)
-        XCTAssertTrue(app.staticTexts["Average MPH per 10K run, with your overall direction."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Your 10K runs are trending based on comparable efforts only."].waitForExistence(timeout: 3))
 
         tapAfterScrolling(app.segmentedControls.buttons["Volume"], in: app)
         XCTAssertTrue(element("run-history-volume-chart", in: app).waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testAllRunsTrendIncludesFastRunOutsideNamedDistanceBreakdown() throws {
+        let app = launchRunHistory(with: "-runHistoryDemoMixedDistanceData")
+
+        app.segmentedControls.buttons["Trends"].tap()
+        XCTAssertTrue(element("run-history-speed-trend", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Overall average-speed trend across every run in this range."].exists)
+        XCTAssertTrue(app.staticTexts["Average · 6 runs"].exists)
+        XCTAssertTrue(app.staticTexts["Faster"].exists)
+
+        app.segmentedControls.buttons["5K"].tap()
+        XCTAssertTrue(app.staticTexts["Your 5K runs are trending based on comparable efforts only."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["5 of 6 runs included · 2.95–3.26 mi"].exists)
+        XCTAssertTrue(app.staticTexts["Average · 5 runs"].exists)
+        XCTAssertTrue(app.staticTexts["Slower"].exists)
     }
 
     @MainActor
@@ -150,7 +201,9 @@ final class pace_to_mphUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["1 run"].waitForExistence(timeout: 5))
         app.segmentedControls.buttons["Trends"].tap()
 
-        XCTAssertTrue(element("run-history-speed-trend-empty", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(element("run-history-speed-trend", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Overall average-speed trend across every run in this range."].exists)
+        XCTAssertTrue(app.staticTexts["Average · 1 run"].exists)
 
         let moreInsights = app.buttons["run-history-more-insights"]
         tapAfterScrolling(moreInsights, in: app)
@@ -260,6 +313,13 @@ final class pace_to_mphUITests: XCTestCase {
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
     }
 
+    private func addScreenshot(named name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     @MainActor
     private func launchRunHistory(with seedArgument: String) -> XCUIApplication {
         let app = XCUIApplication()
@@ -290,8 +350,12 @@ final class pace_to_mphUITests: XCTestCase {
     private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
         for _ in 0..<20 {
             if element.exists && element.isHittable { return true }
-            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.82))
-            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.20))
+
+            let elementIsAboveViewport = element.exists && element.frame.midY < app.frame.midY
+            let startY = elementIsAboveViewport ? 0.20 : 0.82
+            let endY = elementIsAboveViewport ? 0.82 : 0.20
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: startY))
+            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: endY))
             start.press(forDuration: 0.01, thenDragTo: end)
         }
         return element.exists
