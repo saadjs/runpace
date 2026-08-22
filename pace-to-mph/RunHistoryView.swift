@@ -42,6 +42,42 @@ private struct ChartScrubOverlay: View {
     }
 }
 
+private struct RunHistorySyncFooter: View {
+    let lastSyncedAt: Date?
+    let isLoading: Bool
+    let onSync: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Spacer()
+
+            if let lastSyncedAt {
+                Text("Last synced \(lastSyncedAt.formatted(date: .abbreviated, time: .shortened))")
+                    .accessibilityIdentifier("run-history-last-synced")
+            } else {
+                Text("Not synced yet")
+            }
+
+            if isLoading {
+                ProgressView()
+                    .controlSize(.mini)
+            } else {
+                Button(action: onSync) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Sync now")
+                .accessibilityIdentifier("run-history-sync-now")
+            }
+
+            Spacer()
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        .padding(.vertical, 7)
+    }
+}
+
 private extension Collection {
     /// Element whose date sits closest to `date` — the shared "snap the scrub to
     /// a real data point" rule behind every trend chart's selection.
@@ -58,6 +94,7 @@ struct RunHistoryView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @State private var settings = UnitSettings.shared
+    @State private var debugLastSyncedAt = Date()
     private var unit: SpeedUnit { settings.unit }
 
     init(service: HealthKitService) {
@@ -66,9 +103,17 @@ struct RunHistoryView: View {
 
     private var usesDemoData: Bool {
         #if DEBUG
-        ProcessInfo.processInfo.arguments.contains { $0.hasPrefix("-runHistoryDemo") }
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains { $0.hasPrefix("-runHistoryDemo") } { return true }
+        #if targetEnvironment(simulator)
+        // HealthKit has no useful workout library in a fresh simulator. Seed a
+        // handful of runs by default while preserving an opt-in live-data path.
+        return !arguments.contains("-runHistoryLiveData")
         #else
-        false
+        return false
+        #endif
+        #else
+        return false
         #endif
     }
 
@@ -79,7 +124,8 @@ struct RunHistoryView: View {
         if arguments.contains("-runHistoryDemoSparseData") { return RunHistoryPreviewData.sparseRuns }
         if arguments.contains("-runHistoryDemoEdgeData") { return RunHistoryPreviewData.edgeCaseRuns }
         if arguments.contains("-runHistoryDemoEmptyData") { return [] }
-        return RunHistoryPreviewData.compactRuns
+        if arguments.contains("-runHistoryDemoCompactData") { return RunHistoryPreviewData.compactRuns }
+        return Array(RunHistoryPreviewData.compactRuns.prefix(4))
         #else
         return []
         #endif
@@ -91,7 +137,9 @@ struct RunHistoryView: View {
                 RunHistoryContent(
                     runs: demoRuns,
                     unit: unit,
-                    initialPeriod: .year
+                    initialPeriod: .year,
+                    lastSyncedAt: debugLastSyncedAt,
+                    onSync: { debugLastSyncedAt = Date() }
                 )
             } else {
                 switch service.authorizationState {
@@ -181,16 +229,30 @@ struct RunHistoryView: View {
         .padding(32)
     }
 
+    @ViewBuilder
     private var runHistory: some View {
-        Group {
-            if service.isLoading && service.runs.isEmpty {
-                ProgressView("Importing...")
-            } else if service.runs.isEmpty {
-                emptyRunsView
-            } else {
-                RunHistoryContent(runs: service.runs, unit: unit)
-                    .refreshable { await service.refresh() }
+        if service.isLoading && service.runs.isEmpty {
+            ProgressView("Importing...")
+        } else if service.runs.isEmpty {
+            ScrollView {
+                VStack(spacing: 16) {
+                    emptyRunsView
+                    RunHistorySyncFooter(
+                        lastSyncedAt: service.lastSyncedAt,
+                        isLoading: service.isLoading,
+                        onSync: { Task { await service.refresh() } }
+                    )
+                }
             }
+        } else {
+            RunHistoryContent(
+                runs: service.runs,
+                unit: unit,
+                lastSyncedAt: service.lastSyncedAt,
+                isSyncing: service.isLoading,
+                onSync: { Task { await service.refresh() } }
+            )
+            .refreshable { await service.refresh() }
         }
     }
 
@@ -225,6 +287,9 @@ struct RunHistoryView: View {
 private struct RunHistoryContent: View {
     let runs: [RunWorkout]
     let unit: SpeedUnit
+    let lastSyncedAt: Date?
+    let isSyncing: Bool
+    let onSync: (() -> Void)?
 
     @State private var selectedTrendScope: RunTrendScope = .threeMonths
     @State private var selectedTrendDistance: RunRecordTarget?
@@ -242,10 +307,16 @@ private struct RunHistoryContent: View {
         runs: [RunWorkout],
         unit: SpeedUnit,
         initialMode: RunHistoryMode = .runs,
-        initialPeriod: RunHistoryPeriod = .week
+        initialPeriod: RunHistoryPeriod = .week,
+        lastSyncedAt: Date? = nil,
+        isSyncing: Bool = false,
+        onSync: (() -> Void)? = nil
     ) {
         self.runs = runs
         self.unit = unit
+        self.lastSyncedAt = lastSyncedAt
+        self.isSyncing = isSyncing
+        self.onSync = onSync
         _selectedMode = State(initialValue: initialMode)
         _selectedPeriod = State(initialValue: initialPeriod)
     }
@@ -385,6 +456,14 @@ private struct RunHistoryContent: View {
                     }
                 case .trends:
                     trendsBody
+                }
+
+                if let onSync {
+                    RunHistorySyncFooter(
+                        lastSyncedAt: lastSyncedAt,
+                        isLoading: isSyncing,
+                        onSync: onSync
+                    )
                 }
             }
             .padding(.horizontal, 24)

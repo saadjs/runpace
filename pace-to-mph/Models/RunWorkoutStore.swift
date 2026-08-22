@@ -50,6 +50,10 @@ final class RunWorkoutStore {
         try syncState(for: key).anchorData
     }
 
+    func lastSyncedAt(for key: String = RunWorkoutStore.runningWorkoutsStateKey) throws -> Date? {
+        try syncState(for: key).lastSyncedAt
+    }
+
     func didRequestAuthorization(for key: String = RunWorkoutStore.runningWorkoutsStateKey) throws -> Bool {
         try syncState(for: key).didRequestAuthorization
     }

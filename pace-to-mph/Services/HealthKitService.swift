@@ -19,6 +19,7 @@ final class HealthKitService {
     var authorizationState: AuthorizationState = .notDetermined
     var runs: [RunWorkout] = []
     var isLoading: Bool = false
+    var lastSyncedAt: Date?
     var lastError: String?
 
     private var readTypes: Set<HKObjectType> {
@@ -89,6 +90,7 @@ final class HealthKitService {
     // successful sync (cache would otherwise show stale ghost data forever).
     // The observer query path passes fullSync: false for incremental sync.
     func refresh(fullSync: Bool = true) async {
+        guard !isLoading else { return }
         guard HKHealthStore.isHealthDataAvailable() else {
             loadCachedRuns()
             return
@@ -101,6 +103,7 @@ final class HealthKitService {
             guard let runStore else {
                 let changes = try await fetchRunningWorkoutChanges(anchor: nil)
                 runs = changes.workouts.sorted { $0.startDate > $1.startDate }
+                lastSyncedAt = Date()
                 authorizationState = .authorized
                 return
             }
@@ -131,8 +134,9 @@ final class HealthKitService {
 
     private func loadCachedRuns() {
         do {
-            if let cachedRuns = try runStore?.fetchRuns() {
-                runs = cachedRuns
+            if let runStore {
+                runs = try runStore.fetchRuns()
+                lastSyncedAt = try runStore.lastSyncedAt()
             }
         } catch {
             lastError = error.localizedDescription

@@ -104,14 +104,21 @@ struct RunWorkoutStoreTests {
         #expect(runs.first?.id == retainedID)
     }
 
-    @Test func syncStatePersistsAnchorAndAuthorizationFlag() throws {
+    @Test func syncStatePersistsAnchorTimestampAndAuthorizationFlag() throws {
         let store = try makeStore()
         let anchorData = Data([1, 2, 3, 4])
+        let syncedAt = Date(timeIntervalSince1970: 1_779_552_000)
 
-        try store.applyChanges(upserting: [], deleting: [], anchorData: anchorData)
+        try store.applyChanges(
+            upserting: [],
+            deleting: [],
+            anchorData: anchorData,
+            syncedAt: syncedAt
+        )
         try store.markAuthorizationRequested()
 
         #expect(try store.anchorData() == anchorData)
+        #expect(try store.lastSyncedAt() == syncedAt)
         #expect(try store.didRequestAuthorization())
     }
 
