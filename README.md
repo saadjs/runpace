@@ -14,7 +14,7 @@ A native iOS app built with SwiftUI for runners — convert pace to MPH/KPH, bro
 ![Swift](https://img.shields.io/badge/Swift-5-FA7343?logo=swift&logoColor=white)
 ![SwiftUI](https://img.shields.io/badge/SwiftUI-blue?logo=swift&logoColor=white)
 ![Xcode](https://img.shields.io/badge/Xcode-16-147EFB?logo=xcode&logoColor=white)
-![Version](https://img.shields.io/badge/version-3.8-brightgreen)
+![Version](https://img.shields.io/badge/version-3.9-brightgreen)
 
 </div>
 

@@ -48,48 +48,40 @@ final class pace_to_mphUITests: XCTestCase {
     @MainActor
     func testScreenshots() throws {
         let app = XCUIApplication()
-        app.launchArguments.append("-uiTesting")
+        app.launchArguments = ["-uiTesting", "-runHistoryDemoCompactData"]
         app.launch()
-        sleep(1)
 
-        // Screenshot 1: Empty state
-        let emptyAttachment = XCTAttachment(screenshot: app.screenshot())
-        emptyAttachment.name = "01_empty"
-        emptyAttachment.lifetime = .keepAlways
-        add(emptyAttachment)
-
-        // Tap the text field and type a pace
         let textField = app.textFields.firstMatch
-        XCTAssertTrue(textField.waitForExistence(timeout: 3))
+        XCTAssertTrue(textField.waitForExistence(timeout: 5))
         textField.tap()
-        textField.typeText("7:30")
+        textField.typeText("7:30\n")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
         sleep(1)
+        addScreenshot(named: "01_pace_to_speed")
 
-        // Dismiss keyboard by tapping the middle of the screen (below card, above controls)
-        dismissKeyboard(in: app)
-        sleep(2)
-
-        // Screenshot 2: Pace to Speed with result (no keyboard)
-        let paceAttachment = XCTAttachment(screenshot: app.screenshot())
-        paceAttachment.name = "02_pace_to_speed"
-        paceAttachment.lifetime = .keepAlways
-        add(paceAttachment)
-
-        // Navigate to reference table via toolbar menu
         let toolsMenu = app.buttons["Tools menu"]
         XCTAssertTrue(toolsMenu.waitForExistence(timeout: 3))
         toolsMenu.tap()
+        app.buttons["Run History"].tap()
 
-        let referenceTable = app.buttons["Reference Table"]
-        XCTAssertTrue(referenceTable.waitForExistence(timeout: 3))
-        referenceTable.tap()
+        XCTAssertTrue(app.navigationBars["Run History"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["10 runs"].waitForExistence(timeout: 3))
         sleep(1)
+        addScreenshot(named: "02_run_history")
 
-        // Screenshot 3: Reference table
-        let refAttachment = XCTAttachment(screenshot: app.screenshot())
-        refAttachment.name = "03_reference_table"
-        refAttachment.lifetime = .keepAlways
-        add(refAttachment)
+        app.segmentedControls.buttons["Trends"].tap()
+        XCTAssertTrue(element("run-history-speed-trend", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Average · 6 runs"].exists)
+        sleep(1)
+        addScreenshot(named: "03_speed_trends")
+
+        app.navigationBars["Run History"].buttons.firstMatch.tap()
+        XCTAssertTrue(toolsMenu.waitForExistence(timeout: 3))
+        toolsMenu.tap()
+        app.buttons["Reference Table"].tap()
+        XCTAssertTrue(app.navigationBars["Reference"].waitForExistence(timeout: 5))
+        sleep(1)
+        addScreenshot(named: "04_reference_table")
     }
 
     @MainActor
