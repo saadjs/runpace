@@ -121,6 +121,7 @@ struct RunHistoryView: View {
         #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("-runHistoryDemoDenseData") { return RunHistoryPreviewData.runs }
+        if arguments.contains("-runHistoryDemoMixedDistanceData") { return RunHistoryPreviewData.mixedDistanceRuns }
         if arguments.contains("-runHistoryDemoSparseData") { return RunHistoryPreviewData.sparseRuns }
         if arguments.contains("-runHistoryDemoEdgeData") { return RunHistoryPreviewData.edgeCaseRuns }
         if arguments.contains("-runHistoryDemoEmptyData") { return [] }
@@ -349,9 +350,21 @@ private struct RunHistoryContent: View {
         return distanceTrends.max { $0.trend.runCount < $1.trend.runCount }?.target
     }
 
-    private var selectedDistanceTrend: RunSpeedTrend? {
-        guard let resolvedTrendDistance else { return nil }
-        return distanceTrends.first { $0.target == resolvedTrendDistance }?.trend
+    private var overallSpeedTrend: RunSpeedTrend {
+        RunHistoryStats.speedTrend(from: runs, scope: selectedTrendScope, unit: unit)
+    }
+
+    // A distance that falls out of the current scope resolves back to All Runs
+    // rather than silently switching the headline to a different race distance.
+    private var resolvedSpeedTrendDistance: RunRecordTarget? {
+        guard let selectedTrendDistance,
+              availableTrendTargets.contains(selectedTrendDistance) else { return nil }
+        return selectedTrendDistance
+    }
+
+    private var selectedSpeedTrend: RunSpeedTrend {
+        guard let resolvedSpeedTrendDistance else { return overallSpeedTrend }
+        return distanceTrends.first { $0.target == resolvedSpeedTrendDistance }?.trend ?? overallSpeedTrend
     }
 
     private var activitySummary: RunActivitySummary {
@@ -499,6 +512,9 @@ private struct RunHistoryContent: View {
         .onChange(of: resolvedTrendDistance) { _, _ in
             selectedChartPoint = nil
         }
+        .onChange(of: resolvedSpeedTrendDistance) { _, _ in
+            selectedChartPoint = nil
+        }
     }
 
     @ViewBuilder
@@ -521,21 +537,18 @@ private struct RunHistoryContent: View {
     private var selectedTrendChart: some View {
         switch selectedTrendMetric {
         case .speed:
-            if let resolved = resolvedTrendDistance, let trend = selectedDistanceTrend {
-                SpeedTrendCard(
-                    trend: trend,
-                    availableTargets: availableTrendTargets,
-                    selectedDistance: Binding(
-                        get: { resolved },
-                        set: { selectedTrendDistance = $0 }
-                    ),
-                    selectedPoint: $selectedChartPoint,
-                    scope: selectedTrendScope,
-                    unit: unit
-                )
-            } else {
-                SpeedTrendEmptyCard()
-            }
+            SpeedTrendCard(
+                trend: selectedSpeedTrend,
+                overallRunCount: overallSpeedTrend.runCount,
+                availableTargets: availableTrendTargets,
+                selectedDistance: Binding(
+                    get: { resolvedSpeedTrendDistance },
+                    set: { selectedTrendDistance = $0 }
+                ),
+                selectedPoint: $selectedChartPoint,
+                scope: selectedTrendScope,
+                unit: unit
+            )
         case .pace:
             if let resolved = resolvedTrendDistance {
                 PaceTrendCard(
@@ -1477,8 +1490,9 @@ private struct PBCell: View {
 /// reads at a glance. Scrub the chart to inspect any single run.
 private struct SpeedTrendCard: View {
     let trend: RunSpeedTrend
+    let overallRunCount: Int
     let availableTargets: [RunRecordTarget]
-    @Binding var selectedDistance: RunRecordTarget
+    @Binding var selectedDistance: RunRecordTarget?
     @Binding var selectedPoint: RunChartPoint?
     let scope: RunTrendScope
     let unit: SpeedUnit
@@ -1530,20 +1544,34 @@ private struct SpeedTrendCard: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            Text("Average \(unit.speedLabel) per \(selectedDistance.displayName) run, with your overall direction.")
+            Text(descriptionText)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            if availableTargets.count > 1 {
+            if availableTargets.isEmpty == false {
                 Picker("Distance", selection: $selectedDistance) {
+                    Text("ALL").tag(nil as RunRecordTarget?)
                     ForEach(availableTargets) { target in
-                        Text(target.shortLabel).tag(target)
+                        Text(target.shortLabel).tag(Optional(target))
                     }
                 }
                 .pickerStyle(.segmented)
                 .accessibilityLabel("Distance")
             }
+            if let selectedDistance {
+                Text("\(trend.runCount) of \(overallRunCount) runs included · \(selectedDistance.matchingRangeText(in: unit))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("run-history-speed-inclusion")
+            }
         }
+    }
+
+    private var descriptionText: String {
+        if let selectedDistance {
+            return "Your \(selectedDistance.displayName) runs are trending based on comparable efforts only."
+        }
+        return "Overall average-speed trend across every run in this range."
     }
 
     @ViewBuilder
@@ -2528,7 +2556,7 @@ struct RunHistoryStats {
     }
 
     /// One Speed Trend chart per named distance (5K, 10K, …): runs are bucketed
-    /// by distance (±10% band) so each chart compares like-for-like efforts and
+    /// by distance (±5% band) so each chart compares like-for-like efforts and
     /// the trend line isn't confounded by whether you ran short or long lately.
     /// A distance only appears once it has at least 2 runs in scope, and only
     /// when it's relevant to the active unit (no "1 KM" chart for mph users).
@@ -2708,7 +2736,7 @@ struct RunHistoryStats {
     }
 
     /// Weighted average pace by week/month for one named distance. Using the
-    /// same ±10% distance bucket as Speed keeps 5K and 10K efforts separate;
+    /// same ±5% distance bucket as Speed keeps 5K and 10K efforts separate;
     /// weighting within that bucket handles small GPS distance differences.
     static func paceTrendPoints(
         from runs: [RunWorkout],
@@ -3381,11 +3409,17 @@ enum RunRecordTarget: String, CaseIterable, Identifiable {
         }
     }
 
-    /// A run counts toward this distance when it's within ±10% of the nominal
-    /// distance. At ±10% none of the named distances overlap, so a run lands in
-    /// at most one bucket; runs in the gaps belong to none.
+    /// A run counts toward this distance when it's within ±5% of the nominal
+    /// distance. Runs in the gaps still contribute to All Runs and Volume, but
+    /// are not presented as a named-distance effort.
     func containsDistance(_ meters: Double) -> Bool {
-        abs(meters - self.meters) <= self.meters * 0.10
+        abs(meters - self.meters) <= self.meters * 0.05
+    }
+
+    func matchingRangeText(in unit: SpeedUnit) -> String {
+        let nominal = distance(for: unit)
+        let suffix = unit == .mph ? "mi" : "km"
+        return String(format: "%.2f–%.2f %@", nominal * 0.95, nominal * 1.05, suffix)
     }
 
     func isVisible(in unit: SpeedUnit) -> Bool {
@@ -3572,6 +3606,18 @@ private enum RunHistoryPreviewData {
     static let sparseRuns: [RunWorkout] = [
         makeRun(daysAgo: 1, miles: 3.1, minutes: 29.0, avgHeartRate: nil, elevationGainMeters: nil)
     ]
+
+    // Regression scenario for the Trends UI: the five comparable 5K efforts
+    // have gradually slowed, while the newest 3.58-mile run is substantially
+    // faster. All Runs must include it; the 5K breakdown must not call it a 5K.
+    static let mixedDistanceRuns: [RunWorkout] = [
+        makeRun(daysAgo: 70, miles: 3.10, minutes: 24.8, avgHeartRate: 150),
+        makeRun(daysAgo: 56, miles: 3.10, minutes: 25.4, avgHeartRate: 151),
+        makeRun(daysAgo: 42, miles: 3.10, minutes: 26.0, avgHeartRate: 152),
+        makeRun(daysAgo: 28, miles: 3.10, minutes: 26.7, avgHeartRate: 153),
+        makeRun(daysAgo: 14, miles: 3.10, minutes: 27.3, avgHeartRate: 154),
+        makeRun(daysAgo: 1, miles: 3.58, minutes: 23.3, avgHeartRate: 158)
+    ].sorted { $0.startDate > $1.startDate }
 
     static let edgeCaseRuns: [RunWorkout] = [
         makeRun(daysAgo: 0, miles: 0.62, minutes: 6.5, avgHeartRate: nil, elevationGainMeters: 0),

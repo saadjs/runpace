@@ -108,18 +108,35 @@ struct RunSpeedTrendTests {
         #expect(trends.first { $0.target == .tenKilometers }?.trend.runCount == 2)
     }
 
-    @Test func toleranceBandIsInclusiveAtTenPercent() {
+    @Test func toleranceBandIsInclusiveAtFivePercent() {
         let runs = [
-            run(distanceMeters: 4_500, dayOffset: 0), // exactly -10% of 5K
-            run(distanceMeters: 5_500, dayOffset: 1), // exactly +10% of 5K
-            run(distanceMeters: 4_499, dayOffset: 2), // just outside the band
-            run(distanceMeters: 5_501, dayOffset: 3)  // just outside the band
+            run(distanceMeters: 4_750, dayOffset: 0), // exactly -5% of 5K
+            run(distanceMeters: 5_250, dayOffset: 1), // exactly +5% of 5K
+            run(distanceMeters: 4_749, dayOffset: 2), // just outside the band
+            run(distanceMeters: 5_251, dayOffset: 3)  // just outside the band
         ]
 
         let trends = RunHistoryStats.speedTrendsByDistance(from: runs, scope: .allTime, unit: .mph)
 
         #expect(trends.map(\.target) == [.fiveKilometers])
         #expect(trends.first?.trend.runCount == 2)
+    }
+
+    @Test func allRunsTrendIncludesRunOutsideNamedDistanceBuckets() {
+        let runs = [
+            run(distanceMeters: 5_000, dayOffset: 0),
+            run(distanceMeters: 5_050, dayOffset: 1),
+            run(distanceMeters: 3.58 * 1609.34, dayOffset: 2)
+        ]
+
+        let overall = RunHistoryStats.speedTrend(from: runs, scope: .allTime, unit: .mph)
+        let distanceTrends = RunHistoryStats.speedTrendsByDistance(from: runs, scope: .allTime, unit: .mph)
+
+        #expect(overall.runCount == 3)
+        #expect(distanceTrends.first { $0.target == .fiveKilometers }?.trend.runCount == 2)
+        #expect(distanceTrends.allSatisfy { trend in
+            trend.trend.points.contains { $0.distanceValueText == "3.58" } == false
+        })
     }
 
     @Test func distanceNeedsAtLeastTwoRunsToAppear() {
