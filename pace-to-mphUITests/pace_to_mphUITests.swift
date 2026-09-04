@@ -43,6 +43,22 @@ final class pace_to_mphUITests: XCTestCase {
             app.keyboards.firstMatch.waitForExistence(timeout: 3),
             "Keyboard did not reappear after returning to the converter"
         )
+
+        app.segmentedControls.buttons["Speed → Pace"].tap()
+        XCTAssertTrue(
+            app.keyboards.firstMatch.waitForExistence(timeout: 3),
+            "Keyboard was dismissed by switching conversion direction"
+        )
+
+        XCTAssertTrue(hasDecimalPad(in: app), "Speed entry did not get the decimal pad")
+        app.segmentedControls.buttons["Pace → Speed"].tap()
+        XCTAssertFalse(hasDecimalPad(in: app), "Pace entry did not get the punctuation keyboard")
+
+        dismissKeyboard(in: app)
+        XCTAssertTrue(
+            app.keyboards.firstMatch.waitForNonExistence(timeout: 3),
+            "Tapping outside the card did not dismiss the keyboard"
+        )
     }
 
     @MainActor
@@ -278,6 +294,37 @@ final class pace_to_mphUITests: XCTestCase {
         XCTAssertEqual(first.value as? String, "Expanded")
     }
 
+    @MainActor
+    func testPersonalBestOpensPreviousRecordHistory() throws {
+        let app = launchRunHistory(with: "-runHistoryDemoRecordsData")
+
+        XCTAssertTrue(app.navigationBars["Run History"].waitForExistence(timeout: 5))
+        app.segmentedControls.buttons["Trends"].tap()
+
+        let moreInsights = app.buttons["run-history-more-insights"]
+        tapAfterScrolling(moreInsights, in: app)
+        XCTAssertTrue(element("run-history-personal-bests", in: app).waitForExistence(timeout: 5))
+
+        let fiveKCell = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] '5K personal best'")
+        ).firstMatch
+        tapAfterScrolling(fiveKCell, in: app)
+
+        XCTAssertTrue(app.navigationBars["5K Record"].waitForExistence(timeout: 5))
+        XCTAssertTrue(element("run-history-record-current", in: app).waitForExistence(timeout: 3))
+        XCTAssertTrue(
+            app.staticTexts["Previous best"].exists,
+            "The record detail did not show what the current 5K PR beat"
+        )
+        addScreenshot(named: "record-detail-previous-best")
+
+        XCTAssertTrue(scrollToElement(app.staticTexts["Every record"], in: app))
+        addScreenshot(named: "record-detail-progression")
+
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.navigationBars["Run History"].waitForExistence(timeout: 3))
+    }
+
     private func monthCards(in app: XCUIApplication) -> XCUIElementQuery {
         app.buttons.matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "run-history-month-card-")
@@ -355,6 +402,14 @@ final class pace_to_mphUITests: XCTestCase {
 
     private func element(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any)[identifier]
+    }
+
+    @MainActor
+    private func hasDecimalPad(in app: XCUIApplication) -> Bool {
+        let lettersKey = app.keys.matching(
+            NSPredicate(format: "label IN {'letters', 'ABC'}")
+        ).firstMatch
+        return !lettersKey.waitForExistence(timeout: 2)
     }
 
     @MainActor

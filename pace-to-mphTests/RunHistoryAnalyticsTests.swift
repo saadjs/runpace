@@ -25,6 +25,128 @@ struct RunHistoryAnalyticsTests {
         )
     }
 
+    @Test func recordProgressionKeepsOnlyEffortsThatBeatTheStandingRecord() {
+        let runs = [
+            run(daysAgo: 300, miles: 3.15, pace: 9.0),
+            run(daysAgo: 200, miles: 3.15, pace: 10.0),
+            run(daysAgo: 100, miles: 3.15, pace: 8.0),
+            run(daysAgo: 10, miles: 6.2, pace: 8.5),
+            run(daysAgo: 5, miles: 6.2, pace: 7.5)
+        ]
+
+        let progression = RunHistoryStats.recordProgression(for: .fiveKilometers, from: runs, unit: .mph)
+
+        #expect(progression.count == 3)
+        #expect(progression.map(\.paceText) == ["9:00", "8:00", "7:30"])
+        #expect(progression.first?.improvementSeconds == nil)
+        #expect(progression.first?.previousTimeText == nil)
+    }
+
+    @Test func recordProgressionReportsWhatEachRecordBeat() throws {
+        let runs = [
+            run(daysAgo: 90, miles: 3.15, pace: 9.0),
+            run(daysAgo: 40, miles: 3.15, pace: 8.0)
+        ]
+
+        let progression = RunHistoryStats.recordProgression(for: .fiveKilometers, from: runs, unit: .mph)
+        let current = try #require(progression.last)
+
+        #expect(current.previousTimeText == "27:58")
+        #expect(current.timeText == "24:51")
+        #expect(abs((current.improvementSeconds ?? 0) - 186.4) < 0.5)
+        #expect(abs((current.paceImprovementSeconds ?? 0) - 60) < 0.5)
+        #expect(current.improvementText == "3:06 faster")
+        #expect(current.paceImprovementText == "1:00/mi quicker")
+        #expect(current.daysSincePrevious == 50)
+        #expect(current.previousStoodText == "Stood for 50 days")
+    }
+
+    @Test func recordProgressionMarksEffortsExtrapolatedFromLongerRuns() {
+        let runs = [
+            run(daysAgo: 60, miles: 5.0 / 1.60934, pace: 9.0),
+            run(daysAgo: 20, miles: 8.0, pace: 8.0)
+        ]
+
+        let progression = RunHistoryStats.recordProgression(for: .fiveKilometers, from: runs, unit: .mph)
+
+        #expect(progression.map(\.isEstimated) == [false, true])
+    }
+
+    @Test func recordProgressionMarksSlightlyLongerGPSRunsAsEstimated() throws {
+        let run = run(daysAgo: 20, miles: 5.1 / 1.60934, pace: 8.0)
+
+        let milestone = try #require(
+            RunHistoryStats.recordProgression(for: .fiveKilometers, from: [run], unit: .mph).first
+        )
+
+        #expect(milestone.isEstimated)
+    }
+
+    @Test func recordProgressionIgnoresEffortsThatOnlyMatchTheRecord() {
+        let runs = [
+            run(daysAgo: 60, miles: 3.15, pace: 8.0),
+            run(daysAgo: 20, miles: 3.15, pace: 8.0)
+        ]
+
+        let progression = RunHistoryStats.recordProgression(for: .fiveKilometers, from: runs, unit: .mph)
+
+        #expect(progression.count == 1)
+        #expect(progression.first?.date == runs[0].startDate)
+    }
+
+    @Test func recordProgressionEndsOnTheSameRunAsThePersonalBest() throws {
+        let runs = [
+            run(daysAgo: 120, miles: 6.3, pace: 9.5),
+            run(daysAgo: 80, miles: 6.25, pace: 8.7),
+            run(daysAgo: 12, miles: 6.2, pace: 8.9)
+        ]
+
+        let record = try #require(
+            RunHistoryStats.personalRecords(from: runs, unit: .mph, referenceDate: reference)
+                .first { $0.target == .tenKilometers }
+        )
+        let progression = RunHistoryStats.recordProgression(for: .tenKilometers, from: runs, unit: .mph)
+
+        #expect(progression.last?.id == record.runID)
+        #expect(progression.count == 2)
+    }
+
+    @Test func tiedPersonalBestUsesTheSameRunInProgressionAndSummary() throws {
+        let newer = run(daysAgo: 20, miles: 6.25, pace: 8.0)
+        let older = run(daysAgo: 60, miles: 6.25, pace: 8.0)
+        let runs = [newer, older]
+
+        let record = try #require(
+            RunHistoryStats.personalRecords(from: runs, unit: .mph, referenceDate: reference)
+                .first { $0.target == .tenKilometers }
+        )
+        let current = try #require(
+            RunHistoryStats.recordProgression(for: .tenKilometers, from: runs, unit: .mph).last
+        )
+
+        #expect(current.id == record.runID)
+        #expect(current.date == record.achievedDate)
+    }
+
+    @Test func severalEffortsCanProduceOnlyOneRecordMilestone() {
+        let runs = [
+            run(daysAgo: 90, miles: 3.15, pace: 8.0),
+            run(daysAgo: 60, miles: 3.15, pace: 8.5),
+            run(daysAgo: 30, miles: 3.15, pace: 9.0)
+        ]
+
+        let progression = RunHistoryStats.recordProgression(for: .fiveKilometers, from: runs, unit: .mph)
+
+        #expect(runs.count == 3)
+        #expect(progression.count == 1)
+    }
+
+    @Test func recordProgressionIsEmptyWithoutAnyQualifyingRun() {
+        let runs = [run(daysAgo: 4, miles: 2.0, pace: 8.0)]
+
+        #expect(RunHistoryStats.recordProgression(for: .fiveKilometers, from: runs, unit: .mph).isEmpty)
+    }
+
     @Test func comparisonUsesDistanceWeightedAveragePace() {
         let runs = [
             run(daysAgo: 10, miles: 2, pace: 8),

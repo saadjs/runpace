@@ -34,11 +34,19 @@ struct ContentView: View {
                         .padding(.bottom, 8)
                 }
                 .autoFocus($isInputFocused)
+                // Without a shape the tap target stops at the content, so the
+                // empty space around the card never dismissed the keyboard.
+                .contentShape(Rectangle())
                 .onTapGesture {
                     isInputFocused = false
                 }
                 .onChange(of: unitSettings.unit) { _, _ in
                     viewModel.handleUnitChange()
+                }
+                .onChange(of: viewModel.direction) { _, _ in
+                    // Runs after SwiftUI has pushed the new keyboard type onto
+                    // the field, which is what UIKit reloads from.
+                    Task { @MainActor in reloadKeyboardForFocusedField() }
                 }
             }
             .toolbar {
@@ -236,9 +244,9 @@ struct ContentView: View {
             get: { viewModel.direction },
             set: { direction in
                 withAnimation(.snappy(duration: 0.25)) {
-                    isInputFocused = false
                     viewModel.switchDirection(to: direction)
                 }
+                isInputFocused = true
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             }
         )) {
