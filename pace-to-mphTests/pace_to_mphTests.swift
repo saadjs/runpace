@@ -192,7 +192,7 @@ struct ReviewRegressionTests {
         let resultSection = try #require(
             slice(
                 in: contentView,
-                from: "// Result",
+                from: "private var conversionCard: some View {",
                 to: ".sensoryFeedback(.impact(flexibility: .soft), trigger: viewModel.result)"
             )
         )

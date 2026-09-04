@@ -77,6 +77,46 @@ struct RunCadenceTests {
         #expect(abs(cadence.runsPerWeek - 0.3) < 0.01)
     }
 
+    @Test func currentWeekRangeNamesItsMondayThroughSundayWindow() {
+        let friday = calendar.date(
+            from: DateComponents(year: 2026, month: 9, day: 4, hour: 12)
+        )!
+
+        #expect(
+            RunHistoryStats.currentWeekRangeText(
+                containing: friday,
+                locale: Locale(identifier: "en_US")
+            )
+                == "Mon, Aug 31 – Sun, Sep 6, 2026"
+        )
+    }
+
+    @Test func trendScopesExposeTheirActualRollingDates() {
+        let septemberFourth = calendar.date(
+            from: DateComponents(year: 2026, month: 9, day: 4, hour: 12)
+        )!
+        let firstRun = calendar.date(
+            from: DateComponents(year: 2025, month: 12, day: 20, hour: 12)
+        )!
+
+        #expect(
+            RunTrendScope.threeMonths.dateRangeText(
+                referenceDate: septemberFourth,
+                earliestRunDate: firstRun,
+                calendar: calendar,
+                locale: Locale(identifier: "en_US")
+            ) == "Jun 4 – Sep 4, 2026"
+        )
+        #expect(
+            RunTrendScope.allTime.dateRangeText(
+                referenceDate: septemberFourth,
+                earliestRunDate: firstRun,
+                calendar: calendar,
+                locale: Locale(identifier: "en_US")
+            ) == "Dec 20, 2025 – Sep 4, 2026"
+        )
+    }
+
     @Test func shortWindowIsFlooredAtOneWeekAndOneMonth() {
         // 3 runs in 3 days is not 7 runs a week.
         let start = reference.addingTimeInterval(-3 * 86_400)

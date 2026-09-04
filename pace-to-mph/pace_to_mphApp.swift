@@ -1,10 +1,3 @@
-//
-//  pace_to_mphApp.swift
-//  pace-to-mph
-//
-//  Created by Saad Bash on 2/28/26.
-//
-
 import SwiftUI
 import SwiftData
 
@@ -34,7 +27,10 @@ private struct AppRootView: View {
                 showYearGroupingPrototypes: ProcessInfo.processInfo.arguments.contains("-runHistoryGroupingPrototypes")
             )
         } else {
-            ContentView(healthKitService: healthKitService)
+            ContentView(
+                healthKitService: healthKitService,
+                initialScreen: initialScreenOverride
+            )
                 .task {
                     guard !isUITesting else { return }
                     await bootstrapHealthKit()
@@ -52,6 +48,23 @@ private struct AppRootView: View {
     private var isUITesting: Bool {
         ProcessInfo.processInfo.arguments.contains("-uiTesting")
     }
+
+    #if DEBUG
+    private var initialScreenOverride: DefaultScreen? {
+        guard isUITesting else { return nil }
+
+        let arguments = ProcessInfo.processInfo.arguments
+        if let flagIndex = arguments.firstIndex(of: "-initialScreen"),
+           arguments.indices.contains(flagIndex + 1),
+           let screen = DefaultScreen(rawValue: arguments[flagIndex + 1]) {
+            return screen
+        }
+
+        // Keep UI tests isolated from preferences left behind by local use or
+        // another test, unless a test explicitly requests a launch screen.
+        return .converter
+    }
+    #endif
 
     private func bootstrapHealthKit() async {
         healthKitService.configure(modelContext: modelContext)

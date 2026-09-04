@@ -7,6 +7,30 @@ final class pace_to_mphUITests: XCTestCase {
     }
 
     @MainActor
+    func testSelectedDefaultScreenOpensAtLaunch() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-uiTesting",
+            "-initialScreen", DefaultScreenLaunchValue.runHistory,
+            "-runHistoryDemoCompactData",
+        ]
+
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Run History"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        XCTAssertTrue(app.buttons["Tools menu"].waitForExistence(timeout: 3))
+        let navigationButtonLabels = app.navigationBars["Run History"].buttons
+            .allElementsBoundByIndex
+            .map(\.label)
+        XCTAssertFalse(
+            navigationButtonLabels.contains("Back")
+                || navigationButtonLabels.contains("Converter"),
+            "A default screen should show the tools menu, not a Back button: \(navigationButtonLabels)"
+        )
+    }
+
+    @MainActor
     func testKeyboardAutomaticallyOpensReliably() throws {
         let app = XCUIApplication()
         app.launchArguments.append("-uiTesting")
@@ -37,7 +61,9 @@ final class pace_to_mphUITests: XCTestCase {
         )
 
         dismissKeyboard(in: app)
-        app.navigationBars["Race Calculator"].buttons.firstMatch.tap()
+        XCTAssertTrue(toolsMenu.waitForExistence(timeout: 3))
+        toolsMenu.tap()
+        app.buttons["Converter"].tap()
 
         XCTAssertTrue(
             app.keyboards.firstMatch.waitForExistence(timeout: 3),
@@ -91,7 +117,6 @@ final class pace_to_mphUITests: XCTestCase {
         sleep(1)
         addScreenshot(named: "03_speed_trends")
 
-        app.navigationBars["Run History"].buttons.firstMatch.tap()
         XCTAssertTrue(toolsMenu.waitForExistence(timeout: 3))
         toolsMenu.tap()
         app.buttons["Reference Table"].tap()
@@ -362,7 +387,7 @@ final class pace_to_mphUITests: XCTestCase {
     @MainActor
     private func launchRunHistory(with seedArgument: String) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = [seedArgument]
+        app.launchArguments = ["-uiTesting", seedArgument]
         app.launch()
 
         let toolsMenu = app.buttons["Tools menu"]
@@ -416,4 +441,8 @@ final class pace_to_mphUITests: XCTestCase {
     private func dismissKeyboard(in app: XCUIApplication) {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)).tap()
     }
+}
+
+private enum DefaultScreenLaunchValue {
+    static let runHistory = "runHistory"
 }

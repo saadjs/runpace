@@ -2,109 +2,130 @@ import SwiftUI
 
 struct ContentView: View {
     let healthKitService: HealthKitService
+    let defaultScreenSettings: DefaultScreenSettings
 
     @State private var viewModel = ConverterViewModel()
     @State private var favoritesStore = FavoritesStore()
     @State private var unitSettings = UnitSettings.shared
+    @State private var currentScreen: DefaultScreen
     @FocusState private var isInputFocused: Bool
 
-    init(healthKitService: HealthKitService) {
+    init(
+        healthKitService: HealthKitService,
+        defaultScreenSettings: DefaultScreenSettings = .shared,
+        initialScreen: DefaultScreen? = nil
+    ) {
         self.healthKitService = healthKitService
+        self.defaultScreenSettings = defaultScreenSettings
+        _currentScreen = State(
+            initialValue: initialScreen ?? defaultScreenSettings.defaultScreen
+        )
     }
 
     var body: some View {
         NavigationStack {
-            GlassEffectContainer {
-                VStack(spacing: 0) {
-                    // Header
-                    headerSection
-                        .padding(.horizontal, 24)
-                        .padding(.top, 16)
-
-                    // Conversion card
-                    conversionCard
-                        .padding(.horizontal, 24)
-                        .padding(.top, 16)
-
-                    Spacer()
-
-                    // Bottom controls
-                    controlPanel
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 8)
-                }
-                .autoFocus($isInputFocused)
-                // Without a shape the tap target stops at the content, so the
-                // empty space around the card never dismissed the keyboard.
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    isInputFocused = false
-                }
-                .onChange(of: unitSettings.unit) { _, _ in
-                    viewModel.handleUnitChange()
-                }
-                .onChange(of: viewModel.direction) { _, _ in
-                    // Runs after SwiftUI has pushed the new keyboard type onto
-                    // the field, which is what UIKit reloads from.
-                    Task { @MainActor in reloadKeyboardForFocusedField() }
-                }
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        NavigationLink {
-                            RaceTimeView()
-                        } label: {
-                            Label("Race Calculator", systemImage: "flag.checkered")
-                        }
-
-                        NavigationLink {
-                            SplitCalculatorView()
-                        } label: {
-                            Label("Even Splits", systemImage: "chart.bar")
-                        }
-
-                        NavigationLink {
-                            NegativeSplitView()
-                        } label: {
-                            Label("Negative Splits", systemImage: "arrow.down.right")
-                        }
-
-                        Divider()
-
-                        NavigationLink {
-                            RunHistoryView(service: healthKitService)
-                        } label: {
-                            Label("Run History", systemImage: "figure.run")
-                        }
-
-                        NavigationLink {
-                            FavoritesView(store: favoritesStore)
-                        } label: {
-                            Label("Favorites", systemImage: "star")
-                        }
-
-                        NavigationLink {
-                            ReferenceView()
-                        } label: {
-                            Label("Reference Table", systemImage: "table")
-                        }
-
-                        Divider()
-
-                        NavigationLink {
-                            SettingsView()
-                        } label: {
-                            Label("Settings", systemImage: "gear")
-                        }
-                    } label: {
-                        Image(systemName: "line.3.horizontal")
-                            .font(.system(size: 15, weight: .semibold))
+            topLevelScreen
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        toolsMenu
                     }
-                    .menuStyle(.button)
-                    .accessibilityLabel("Tools menu")
                 }
+        }
+    }
+
+    @ViewBuilder
+    private var topLevelScreen: some View {
+        switch currentScreen {
+        case .converter:
+            converterScreen
+        case .raceCalculator:
+            RaceTimeView()
+        case .evenSplits:
+            SplitCalculatorView()
+        case .negativeSplits:
+            NegativeSplitView()
+        case .runHistory:
+            RunHistoryView(service: healthKitService)
+        case .favorites:
+            FavoritesView(store: favoritesStore)
+        case .referenceTable:
+            ReferenceView()
+        }
+    }
+
+    private var converterScreen: some View {
+        GlassEffectContainer {
+            VStack(spacing: 0) {
+                headerSection
+                    .padding(.horizontal, 24)
+                    .padding(.top, 16)
+
+                conversionCard
+                    .padding(.horizontal, 24)
+                    .padding(.top, 16)
+
+                Spacer()
+
+                controlPanel
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
             }
+            .autoFocus($isInputFocused, enabled: currentScreen == .converter)
+            // Without a shape the tap target stops at the content, so the
+            // empty space around the card never dismissed the keyboard.
+            .contentShape(Rectangle())
+            .onTapGesture {
+                isInputFocused = false
+            }
+            .onChange(of: unitSettings.unit) { _, _ in
+                viewModel.handleUnitChange()
+            }
+            .onChange(of: viewModel.direction) { _, _ in
+                // Runs after SwiftUI has pushed the new keyboard type onto
+                // the field, which is what UIKit reloads from.
+                Task { @MainActor in reloadKeyboardForFocusedField() }
+            }
+        }
+    }
+
+    private var toolsMenu: some View {
+        Menu {
+            screenButton(.converter)
+
+            Divider()
+
+            screenButton(.raceCalculator)
+            screenButton(.evenSplits)
+            screenButton(.negativeSplits)
+
+            Divider()
+
+            screenButton(.runHistory)
+            screenButton(.favorites)
+            screenButton(.referenceTable)
+
+            Divider()
+
+            NavigationLink {
+                SettingsView(defaultScreenSettings: defaultScreenSettings)
+            } label: {
+                Label("Settings", systemImage: "gear")
+            }
+        } label: {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 15, weight: .semibold))
+        }
+        .menuStyle(.button)
+        .accessibilityLabel("Tools menu")
+    }
+
+    private func screenButton(_ screen: DefaultScreen) -> some View {
+        Button {
+            guard currentScreen != screen else { return }
+            isInputFocused = false
+            currentScreen = screen
+        } label: {
+            Label(screen.label, systemImage: screen.systemImage)
         }
     }
 
@@ -136,7 +157,6 @@ struct ContentView: View {
 
     private var conversionCard: some View {
         VStack(spacing: 24) {
-            // Input
             VStack(spacing: 12) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     TextField(viewModel.placeholder, text: Binding(
@@ -159,7 +179,6 @@ struct ContentView: View {
                         .accessibilityHidden(true)
                 }
 
-                // Accent underline
                 RoundedRectangle(cornerRadius: 1)
                     .fill(Color.green)
                     .frame(height: 2)
@@ -167,10 +186,8 @@ struct ContentView: View {
                     .accessibilityHidden(true)
             }
 
-            // Divider
             Divider()
 
-            // Result
             VStack(spacing: 6) {
                 VStack(spacing: 6) {
                     Text(viewModel.result.isEmpty ? "–" : viewModel.result)

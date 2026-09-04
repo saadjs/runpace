@@ -54,14 +54,18 @@ private enum KeyboardTracker {
 /// typing without tapping into the field first.
 private struct AutoFocusModifier: ViewModifier {
     @FocusState.Binding var isFocused: Bool
+    let enabled: Bool
     @Environment(\.scenePhase) private var scenePhase
 
     func body(content: Content) -> some View {
         // Keyed on scene phase so focus is only requested once the scene is
         // active, and is re-armed when the app returns to the foreground. UIKit
         // silently drops focus requests made while the scene is still inactive.
-        content.task(id: scenePhase) {
-            guard scenePhase == .active else { return }
+        content.task(id: AutoFocusTrigger(scenePhase: scenePhase, enabled: enabled)) {
+            guard enabled, scenePhase == .active else {
+                isFocused = false
+                return
+            }
             KeyboardTracker.start()
             await raiseKeyboard()
         }
@@ -95,8 +99,16 @@ private struct AutoFocusModifier: ViewModifier {
     }
 }
 
+private struct AutoFocusTrigger: Equatable {
+    let scenePhase: ScenePhase
+    let enabled: Bool
+}
+
 extension View {
-    func autoFocus(_ isFocused: FocusState<Bool>.Binding) -> some View {
-        modifier(AutoFocusModifier(isFocused: isFocused))
+    func autoFocus(
+        _ isFocused: FocusState<Bool>.Binding,
+        enabled: Bool = true
+    ) -> some View {
+        modifier(AutoFocusModifier(isFocused: isFocused, enabled: enabled))
     }
 }

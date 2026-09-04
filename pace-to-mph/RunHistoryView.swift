@@ -1,6 +1,5 @@
 import Charts
 import SwiftUI
-import SwiftData
 
 // One symbol per metric so a stat reads the same wherever it appears.
 private enum RunHistorySymbols {
@@ -91,7 +90,6 @@ private extension Collection {
 struct RunHistoryView: View {
     let service: HealthKitService
 
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @State private var settings = UnitSettings.shared
     @State private var debugLastSyncedAt = Date()
@@ -167,15 +165,6 @@ struct RunHistoryView: View {
         }
         .navigationTitle("Run History")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            guard usesDemoData == false else { return }
-            service.configure(modelContext: modelContext)
-            await service.bootstrap()
-            if service.authorizationState == .authorized {
-                await service.refresh()
-                service.startObserving()
-            }
-        }
         // Refresh on foreground so we pick up access grants/revokes the user
         // made in Settings while the app was backgrounded.
         .onChange(of: scenePhase) { _, newPhase in
@@ -533,7 +522,10 @@ private struct RunHistoryContent: View {
             trendsEmptyView
         } else {
             Group {
-                TrendScopeMenu(scope: $selectedTrendScope)
+                TrendScopeMenu(
+                    scope: $selectedTrendScope,
+                    earliestRunDate: runs.map(\.startDate).min()
+                )
                 ActivitySummaryCard(summary: activitySummary, scope: selectedTrendScope)
                 moreInsightsSection
                 TrendMetricPicker(selection: $selectedTrendMetric)
@@ -700,7 +692,13 @@ private struct RunHistoryContent: View {
     private var secondaryFilterPicker: some View {
         switch selectedPeriod {
         case .week:
-            EmptyView()
+            Label(
+                RunHistoryStats.currentWeekRangeText(),
+                systemImage: "calendar"
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .accessibilityIdentifier("run-history-week-range")
         case .month:
             Picker("Month", selection: $selectedMonthStart) {
                 ForEach(monthOptions, id: \.self) { monthStart in
@@ -717,6 +715,17 @@ private struct RunHistoryContent: View {
             }
             .pickerStyle(.menu)
             .accessibilityIdentifier("run-history-year-filter")
+
+            if selectedYearFilter == .allTime,
+               let firstRunDate = runs.map(\.startDate).min() {
+                Label(
+                    RunHistoryFormatters.dateRange(firstRunDate, Date()),
+                    systemImage: "calendar"
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("run-history-all-time-range")
+            }
         }
     }
 
@@ -903,32 +912,51 @@ private struct RunSummaryMetric: View {
 
 private struct TrendScopeMenu: View {
     @Binding var scope: RunTrendScope
+    let earliestRunDate: Date?
+
+    private var dateRangeText: String? {
+        scope.dateRangeText(earliestRunDate: earliestRunDate)
+    }
 
     var body: some View {
-        HStack(spacing: 10) {
-            Label("Showing", systemImage: "calendar")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .labelStyle(.titleAndIcon)
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 10) {
+                Label("Showing", systemImage: "calendar")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .labelStyle(.titleAndIcon)
 
-            Spacer()
+                Spacer()
 
-            Menu {
-                Picker("Scope", selection: $scope) {
-                    ForEach(RunTrendScope.allCases) { value in
-                        Text(value.menuLabel).tag(value)
+                Menu {
+                    Picker("Scope", selection: $scope) {
+                        ForEach(RunTrendScope.allCases) { value in
+                            Text(value.menuLabel).tag(value)
+                        }
                     }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(scope.menuLabel)
+                            .font(.subheadline.weight(.semibold))
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption2.weight(.semibold))
+                    }
+                    .foregroundStyle(.tint)
                 }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(scope.menuLabel)
-                        .font(.subheadline.weight(.semibold))
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2.weight(.semibold))
-                }
-                .foregroundStyle(.tint)
+                .accessibilityLabel("Trend scope")
+                .accessibilityValue(
+                    [scope.menuLabel, dateRangeText].compactMap { $0 }.joined(separator: ", ")
+                )
             }
-            .accessibilityLabel("Trend scope")
+
+            if let dateRangeText {
+                Text(dateRangeText)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .accessibilityIdentifier("run-history-trend-date-range")
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -3291,6 +3319,20 @@ struct RunHistoryStats {
         return DateInterval(start: start, end: end)
     }
 
+    static func currentWeekRangeText(
+        containing date: Date = Date(),
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        let interval = currentWeekInterval(containing: date)
+        // DateInterval ends at the start of next Monday; show the final moment
+        // of Sunday so the user-facing range remains inclusive.
+        return RunHistoryFormatters.weekdayRange(
+            interval.start,
+            interval.end.addingTimeInterval(-1),
+            locale: locale
+        )
+    }
+
     private static func efforts(for target: RunRecordTarget, runs: [RunWorkout], unit: SpeedUnit) -> [RunRecordEffort] {
         runs.compactMap { run in
             guard run.distanceMeters >= target.meters, run.duration > 0 else { return nil }
@@ -3953,6 +3995,17 @@ enum RunTrendScope: String, CaseIterable, Hashable, Identifiable {
             return nil
         }
     }
+
+    func dateRangeText(
+        referenceDate: Date = Date(),
+        earliestRunDate: Date?,
+        calendar: Calendar = RunHistoryStats.calendar,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String? {
+        let start = lowerBound(from: referenceDate, calendar: calendar) ?? earliestRunDate
+        guard let start else { return nil }
+        return RunHistoryFormatters.dateRange(start, referenceDate, locale: locale)
+    }
 }
 
 enum RunVolumeBucketing {
@@ -3992,6 +4045,40 @@ private enum RunHistoryFormatters {
             return "\(startMonth) \(startDay)–\(endDay)"
         }
         return "\(startMonth) \(startDay) – \(endMonth) \(endDay)"
+    }
+
+    static func weekdayRange(
+        _ startDate: Date,
+        _ endDate: Date,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        let weekdayDateFormatter = formatter(locale: locale, template: "EEE MMMd")
+        let yearFormatter = formatter(locale: locale, template: "yyyy")
+        let start = weekdayDateFormatter.string(from: startDate)
+        let end = weekdayDateFormatter.string(from: endDate)
+
+        if Calendar.autoupdatingCurrent.component(.year, from: startDate)
+            == Calendar.autoupdatingCurrent.component(.year, from: endDate) {
+            return "\(start) – \(end), \(yearFormatter.string(from: endDate))"
+        }
+        return "\(start), \(yearFormatter.string(from: startDate)) – \(end), \(yearFormatter.string(from: endDate))"
+    }
+
+    static func dateRange(
+        _ startDate: Date,
+        _ endDate: Date,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        let shortDayFormatter = formatter(locale: locale, template: "MMMd")
+        let yearFormatter = formatter(locale: locale, template: "yyyy")
+        let start = shortDayFormatter.string(from: startDate)
+        let end = shortDayFormatter.string(from: endDate)
+
+        if Calendar.autoupdatingCurrent.component(.year, from: startDate)
+            == Calendar.autoupdatingCurrent.component(.year, from: endDate) {
+            return "\(start) – \(end), \(yearFormatter.string(from: endDate))"
+        }
+        return "\(start), \(yearFormatter.string(from: startDate)) – \(end), \(yearFormatter.string(from: endDate))"
     }
 
     static func monthYear(_ date: Date) -> String {
@@ -4043,6 +4130,13 @@ private enum RunHistoryFormatters {
         formatter.setLocalizedDateFormatFromTemplate("MMMd")
         return formatter
     }()
+
+    private static func formatter(locale: Locale, template: String) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.setLocalizedDateFormatFromTemplate(template)
+        return formatter
+    }
 
     private static let longDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
