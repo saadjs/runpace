@@ -22,10 +22,11 @@ A native iOS app built with SwiftUI for runners — convert pace to MPH/KPH, bro
 
 <table align="center">
   <tr>
-    <td align="center" width="25%"><img src=".github/assets/converter-light.png" alt="Pace to speed converter" /><br /><sub><b>Pace ⇄ speed</b></sub></td>
-    <td align="center" width="25%"><img src=".github/assets/run-history.png" alt="Run history with heart rate and PRs" /><br /><sub><b>Run history · HR · PRs</b></sub></td>
-    <td align="center" width="25%"><img src=".github/assets/speed-trends.png" alt="Overall and per-distance speed trends" /><br /><sub><b>Speed trends</b></sub></td>
-    <td align="center" width="25%"><img src=".github/assets/converter-dark.png" alt="Converter in dark mode" /><br /><sub><b>Dark mode</b></sub></td>
+    <td align="center" width="20%"><img src=".github/assets/converter-light.png" alt="Pace to speed converter" /><br /><sub><b>Pace ⇄ speed</b></sub></td>
+    <td align="center" width="20%"><img src=".github/assets/run-history.png" alt="Run history with heart rate and personal records" /><br /><sub><b>Run history · HR · PRs</b></sub></td>
+    <td align="center" width="20%"><img src=".github/assets/speed-trends.png" alt="Overall speed trends with date ranges" /><br /><sub><b>Speed trends</b></sub></td>
+    <td align="center" width="20%"><img src=".github/assets/record-progression.png" alt="5K personal record progression details" /><br /><sub><b>PR progression</b></sub></td>
+    <td align="center" width="20%"><img src=".github/assets/converter-dark.png" alt="Converter in dark mode" /><br /><sub><b>Dark mode</b></sub></td>
   </tr>
 </table>
 
@@ -34,10 +35,11 @@ A native iOS app built with SwiftUI for runners — convert pace to MPH/KPH, bro
 - **Two-way conversion** — pace (mm:ss per mile/km) ⇄ speed (MPH/KPH), updating in real time as you type
 - **MPH & KM/H** — toggle units; the app remembers your last-used direction and unit
 - **Reference table** — common pace/speed benchmarks for both units
-- **Run history** — reads and locally caches your Apple Health running workouts
+- **Run history** — reads and locally caches your Apple Health running workouts; filter by week, month, year, or all time
 - **Speed trends** — see your overall average-speed direction, then compare like-for-like efforts with 5K, 10K, and other named-distance breakdowns (within ±5% of each distance)
-- **Heart rate** — average heart rate per run from Apple Health
-- **Personal records** — tracks your best efforts across common distances
+- **Heart rate** — average heart rate per run from Apple Health when available
+- **Personal records** — track your best efforts across common distances and open each record to see what it beat and how it progressed over time
+- **Customizable launch screen** — choose which RunPace tool opens when you launch the app
 - **Polished by default** — full light/dark mode and subtle haptic feedback
 
 ## Requirements

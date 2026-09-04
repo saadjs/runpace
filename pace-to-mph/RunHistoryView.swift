@@ -139,17 +139,39 @@ struct RunHistoryView: View {
         #endif
     }
 
+    // Lets screenshot tests show record progression without scrolling through
+    // the larger Trends page first. This path is only active with demo data.
+    private var demoShowsRecordDetail: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-runHistoryDemoRecordDetail")
+        #else
+        return false
+        #endif
+    }
+
     var body: some View {
         Group {
             if usesDemoData {
-                RunHistoryContent(
-                    runs: demoRuns,
-                    unit: unit,
-                    initialMode: demoStartsOnTrends ? .trends : .runs,
-                    initialPeriod: .year,
-                    lastSyncedAt: debugLastSyncedAt,
-                    onSync: { debugLastSyncedAt = Date() }
-                )
+                if demoShowsRecordDetail {
+                    PersonalRecordDetailView(
+                        target: .fiveKilometers,
+                        milestones: RunHistoryStats.recordProgression(
+                            for: .fiveKilometers,
+                            from: demoRuns,
+                            unit: unit
+                        ),
+                        unit: unit
+                    )
+                } else {
+                    RunHistoryContent(
+                        runs: demoRuns,
+                        unit: unit,
+                        initialMode: demoStartsOnTrends ? .trends : .runs,
+                        initialPeriod: .year,
+                        lastSyncedAt: debugLastSyncedAt,
+                        onSync: { debugLastSyncedAt = Date() }
+                    )
+                }
             } else {
                 switch service.authorizationState {
                 case .unavailable:

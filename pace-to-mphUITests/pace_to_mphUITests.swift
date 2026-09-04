@@ -153,6 +153,22 @@ final class pace_to_mphUITests: XCTestCase {
         history.swipeUp()
         sleep(3)
         addScreenshot(named: "readme-speed-trends")
+        history.terminate()
+
+        let record = XCUIApplication()
+        record.launchArguments = [
+            "-uiTesting",
+            "-initialScreen", DefaultScreenLaunchValue.runHistory,
+            "-runHistoryDemoRecordsData",
+            "-runHistoryDemoRecordDetail",
+        ]
+        record.launch()
+        XCTAssertTrue(record.navigationBars["5K Record"].waitForExistence(timeout: 5))
+        XCTAssertTrue(element("run-history-record-current", in: record).waitForExistence(timeout: 3))
+        XCTAssertTrue(record.staticTexts["Previous best"].waitForExistence(timeout: 3))
+        sleep(1)
+        addScreenshot(named: "readme-record-progression")
+        record.terminate()
     }
 
     @MainActor
