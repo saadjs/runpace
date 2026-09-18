@@ -38,7 +38,8 @@ A native iOS app built with SwiftUI for runners — convert pace to MPH/KPH, bro
 - **Run history** — reads and locally caches your Apple Health running workouts; filter by week, month, year, or all time
 - **Speed trends** — see your overall average-speed direction, then compare like-for-like efforts with 5K, 10K, and other named-distance breakdowns (within ±5% of each distance)
 - **Heart rate** — average heart rate per run from Apple Health when available
-- **Personal records** — track your best efforts across common distances and open each record to see what it beat and how it progressed over time
+- **Distance trend** — see whether your runs are getting longer, with every run plotted against a best-fit line
+- **Personal records** — track your best efforts across common distances plus your longest run, and open each record to see what it beat and how it progressed over time
 - **Customizable launch screen** — choose which RunPace tool opens when you launch the app
 - **Polished by default** — full light/dark mode and subtle haptic feedback
 

@@ -77,6 +77,10 @@ private struct RunHistorySyncFooter: View {
     }
 }
 
+private extension SpeedUnit {
+    var distanceLabel: String { self == .mph ? "mi" : "km" }
+}
+
 private extension Collection {
     /// Element whose date sits closest to `date` — the shared "snap the scrub to
     /// a real data point" rule behind every trend chart's selection.
@@ -349,8 +353,8 @@ private struct RunHistoryContent: View {
 
     // Always derived from the full run set so every PR badge shows in the Runs
     // list regardless of the period filter or Trends tab selection.
-    private var prBadgesByRunID: [UUID: [RunRecordTarget]] {
-        RunHistoryStats.personalRecordTargets(from: records)
+    private var prBadgesByRunID: [UUID: [RunPRBadge]] {
+        RunHistoryStats.prBadges(from: records, longestRunID: RunHistoryStats.longestRun(from: runs)?.id)
     }
 
     private var distanceTrends: [RunDistanceTrend] {
@@ -399,6 +403,10 @@ private struct RunHistoryContent: View {
 
     private var volumeBars: [RunVolumeBar] {
         RunHistoryStats.volumeBars(from: runs, scope: selectedTrendScope, unit: unit)
+    }
+
+    private var runLengthTrend: RunLengthTrend {
+        RunHistoryStats.runLengthTrend(from: runs, scope: selectedTrendScope, unit: unit)
     }
 
     private var paceTrendPoints: [RunPaceTrendPoint] {
@@ -468,7 +476,8 @@ private struct RunHistoryContent: View {
     // (a toolbar, a chip row), not for a long scroll of independent cards.
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 16) {
+            // Not lazy: with a LazyVStack here, scrolling the Runs list while accessibility is active (VoiceOver, UI tests) hangs at 100% CPU.
+            VStack(spacing: 16) {
                 header
 
                 switch selectedMode {
@@ -595,6 +604,8 @@ private struct RunHistoryContent: View {
                 scope: selectedTrendScope,
                 unit: unit
             )
+        case .distance:
+            RunLengthTrendCard(trend: runLengthTrend, scope: selectedTrendScope, unit: unit)
         }
     }
 
@@ -1188,13 +1199,13 @@ private struct TrainingHighlightsCard: View {
                 )
             }
 
-            if summary.prHighlightTargets.isEmpty == false {
+            if summary.prHighlightCount > 0 {
                 Label(summary.prHighlightNames, systemImage: "rosette")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.green)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityLabel("Personal best highlights: \(summary.prHighlightTargets.map(\.displayName).joined(separator: ", "))")
+                    .accessibilityLabel("Personal best highlights: \(summary.prHighlightAccessibilityNames)")
             }
         }
         .padding(16)
@@ -1373,6 +1384,7 @@ private struct PaceTrendCard: View {
         .padding(16)
         .frame(maxWidth: .infinity)
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("run-history-pace-trend")
         .sensoryFeedback(.selection, trigger: selectedPoint?.id)
         .onChange(of: points) { _, _ in selectedDate = nil }
@@ -1468,12 +1480,16 @@ private struct PersonalBestsGrid: View {
     let runs: [RunWorkout]
     let unit: SpeedUnit
 
-    @State private var selectedRecord: RunPersonalRecord?
+    @State private var selection: PersonalBestSelection?
 
     private let columns = [
         GridItem(.flexible(), spacing: 8),
         GridItem(.flexible(), spacing: 8)
     ]
+
+    private var longestRunMilestones: [RunLongestRunMilestone] {
+        RunHistoryStats.longestRunProgression(from: runs, unit: unit)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1489,37 +1505,82 @@ private struct PersonalBestsGrid: View {
             LazyVGrid(columns: columns, spacing: 10) {
                 ForEach(records) { record in
                     Button {
-                        selectedRecord = record
+                        selection = .record(record)
                     } label: {
-                        PBCell(target: record.target, record: record, unit: unit)
+                        PBCell(
+                            title: record.target.displayName,
+                            value: record.speedText,
+                            valueUnit: unit.speedLabel,
+                            detail: "\(record.paceText) \(unit.paceLabel)",
+                            date: record.achievedDate
+                        )
+                        .accessibilityLabel("\(record.target.displayName) personal best, \(record.speedText) \(unit.speedLabel)")
                     }
                     .buttonStyle(.plain)
                     .accessibilityHint("Shows this record's history and the mark it beat")
                 }
+
+                if let longest = longestRunMilestones.last {
+                    Button {
+                        selection = .longestRun
+                    } label: {
+                        PBCell(
+                            title: "Longest Run",
+                            value: longest.distanceValueText,
+                            valueUnit: unit.distanceLabel,
+                            detail: "\(longest.timeText) · \(longest.paceText) \(unit.paceLabel)",
+                            date: longest.date
+                        )
+                        .accessibilityLabel("Longest run personal best, \(longest.distanceText)")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Shows every run that set a new longest distance")
+                }
             }
         }
         .accessibilityIdentifier("run-history-personal-bests")
-        .sheet(item: $selectedRecord) { record in
-            PersonalRecordDetailView(
-                target: record.target,
-                milestones: RunHistoryStats.recordProgression(for: record.target, from: runs, unit: unit),
-                unit: unit
-            )
+        .sheet(item: $selection) { selection in
+            switch selection {
+            case .record(let record):
+                PersonalRecordDetailView(
+                    target: record.target,
+                    milestones: RunHistoryStats.recordProgression(for: record.target, from: runs, unit: unit),
+                    unit: unit
+                )
+            case .longestRun:
+                LongestRunDetailView(milestones: longestRunMilestones, unit: unit)
+            }
+        }
+    }
+}
+
+private enum PersonalBestSelection: Identifiable {
+    case record(RunPersonalRecord)
+    case longestRun
+
+    var id: String {
+        switch self {
+        case .record(let record): return record.id
+        case .longestRun: return "longest-run"
         }
     }
 }
 
 private struct PBCell: View {
-    let target: RunRecordTarget
-    let record: RunPersonalRecord
-    let unit: SpeedUnit
+    let title: String
+    let value: String
+    let valueUnit: String
+    let detail: String
+    let date: Date
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text(target.displayName)
+                Text(title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Spacer()
                 Image(systemName: "rosette")
                     .imageScale(.small)
@@ -1530,7 +1591,7 @@ private struct PBCell: View {
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(record.speedText)
+                Text(value)
                     .font(.title2)
                     .fontWeight(.semibold)
                     .fontDesign(.rounded)
@@ -1538,19 +1599,19 @@ private struct PBCell: View {
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                Text(unit.speedLabel)
+                Text(valueUnit)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Text("\(record.paceText) \(unit.paceLabel)")
+            Text(detail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
 
-            Text(record.achievedDate, format: .dateTime.month(.abbreviated).day().year())
+            Text(date, format: .dateTime.month(.abbreviated).day().year())
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
@@ -1560,7 +1621,6 @@ private struct PBCell: View {
         .padding(14)
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(target.displayName) personal best, \(record.speedText) \(unit.speedLabel)")
     }
 }
 
@@ -1673,9 +1733,9 @@ private struct PersonalRecordDetailView: View {
                 .font(.headline)
 
             HStack(alignment: .top, spacing: 12) {
-                markColumn(
-                    time: previous.timeText,
-                    pace: previous.paceText,
+                RecordMarkColumn(
+                    value: previous.timeText,
+                    detail: "\(previous.paceText) \(unit.paceLabel)",
                     date: previous.date,
                     isCurrent: false
                 )
@@ -1685,9 +1745,9 @@ private struct PersonalRecordDetailView: View {
                     .foregroundStyle(.tertiary)
                     .padding(.top, 6)
 
-                markColumn(
-                    time: current.timeText,
-                    pace: current.paceText,
+                RecordMarkColumn(
+                    value: current.timeText,
+                    detail: "\(current.paceText) \(unit.paceLabel)",
                     date: current.date,
                     isCurrent: true
                 )
@@ -1723,25 +1783,6 @@ private struct PersonalRecordDetailView: View {
         .padding(16)
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
         .accessibilityIdentifier("run-history-record-previous")
-    }
-
-    private func markColumn(time: String, pace: String, date: Date, isCurrent: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(time)
-                .font(.title2.weight(.semibold))
-                .fontDesign(.rounded)
-                .monospacedDigit()
-                .foregroundStyle(isCurrent ? .primary : .secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text("\(pace) \(unit.paceLabel)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-            Text(date, format: .dateTime.month(.abbreviated).day().year())
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
     }
 
     private var firstRecordCard: some View {
@@ -1893,6 +1934,321 @@ private struct PersonalRecordDetailView: View {
     }
 }
 
+private struct RecordMarkColumn: View {
+    let value: String
+    let detail: String
+    let date: Date
+    let isCurrent: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(value)
+                .font(.title2.weight(.semibold))
+                .fontDesign(.rounded)
+                .monospacedDigit()
+                .foregroundStyle(isCurrent ? .primary : .secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+            Text(date, format: .dateTime.month(.abbreviated).day().year())
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
+}
+
+/// History of the longest-run record: the current longest, the run it
+/// replaced, and every run that went farther than all before it.
+private struct LongestRunDetailView: View {
+    let milestones: [RunLongestRunMilestone]
+    let unit: SpeedUnit
+
+    @Environment(\.dismiss) private var dismiss
+
+    private var current: RunLongestRunMilestone? { milestones.last }
+    private var previous: RunLongestRunMilestone? { milestones.dropLast().last }
+    private var newestFirst: [RunLongestRunMilestone] { milestones.reversed() }
+
+    private var distanceDomain: ClosedRange<Double> {
+        guard let longest = milestones.map(\.distance).max(), longest > 0 else { return 0...1 }
+        return 0...(longest * 1.15)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    if let current {
+                        currentCard(current)
+
+                        if let previous {
+                            previousLongestCard(current: current, previous: previous)
+                        } else {
+                            firstRecordCard
+                        }
+
+                        if milestones.count >= 3 {
+                            progressionChart
+                        }
+
+                        if milestones.count >= 2 {
+                            progressionList
+                        }
+                    } else {
+                        ContentUnavailableView(
+                            "No runs yet",
+                            systemImage: "rosette",
+                            description: Text("Your longest run shows here once you log one.")
+                        )
+                        .padding(.top, 40)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+            }
+            .scrollIndicators(.hidden)
+            .navigationTitle("Longest Run")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .accessibilityIdentifier("run-history-longest-detail")
+        }
+        .tint(.green)
+    }
+
+    private func currentCard(_ milestone: RunLongestRunMilestone) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "rosette")
+                    .imageScale(.small)
+                    .foregroundStyle(.green)
+                Text("Current record")
+                    .font(.subheadline.weight(.semibold))
+                Spacer(minLength: 8)
+                Text(milestone.date, format: .dateTime.month(.abbreviated).day().year())
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(milestone.distanceValueText)
+                    .font(.system(size: 46, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Text(unit.distanceLabel)
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 14) {
+                Label(milestone.timeText, systemImage: RunHistorySymbols.duration)
+                Label("\(milestone.paceText) \(unit.paceLabel)", systemImage: RunHistorySymbols.pace)
+            }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Current longest run, \(milestone.distanceText), set \(RunHistoryFormatters.longDate(milestone.date))")
+        .accessibilityIdentifier("run-history-longest-current")
+    }
+
+    private func previousLongestCard(
+        current: RunLongestRunMilestone,
+        previous: RunLongestRunMilestone
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Previous longest")
+                .font(.headline)
+
+            HStack(alignment: .top, spacing: 12) {
+                RecordMarkColumn(
+                    value: previous.distanceText,
+                    detail: previous.timeText,
+                    date: previous.date,
+                    isCurrent: false
+                )
+
+                Image(systemName: "arrow.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, 6)
+
+                RecordMarkColumn(
+                    value: current.distanceText,
+                    detail: current.timeText,
+                    date: current.date,
+                    isCurrent: true
+                )
+
+                Spacer(minLength: 0)
+            }
+
+            if let extra = current.extraDistanceText {
+                Label(extra, systemImage: "arrow.up.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.green)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.green.opacity(0.12), in: .capsule)
+            }
+
+            if let stood = current.previousStoodText {
+                Text(stood)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+        .accessibilityIdentifier("run-history-longest-previous")
+    }
+
+    private var firstRecordCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("First one on the board")
+                .font(.headline)
+            Text("Your first recorded run is still your longest. Go farther to set a new record.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+    }
+
+    private var progressionChart: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Longest run over time")
+                .font(.headline)
+
+            Chart(milestones) { milestone in
+                LineMark(
+                    x: .value("Date", milestone.date),
+                    y: .value("Distance", milestone.distance)
+                )
+                .interpolationMethod(.stepEnd)
+                .foregroundStyle(Color.green)
+                .lineStyle(.init(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+
+                PointMark(
+                    x: .value("Date", milestone.date),
+                    y: .value("Distance", milestone.distance)
+                )
+                .foregroundStyle(Color.green)
+                .symbolSize(40)
+            }
+            .chartYScale(domain: distanceDomain)
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                    AxisGridLine()
+                    AxisValueLabel(format: .dateTime.month(.abbreviated).year(.twoDigits))
+                }
+            }
+            .chartYAxis {
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { _ in
+                    AxisGridLine()
+                    AxisValueLabel()
+                }
+            }
+            .frame(height: 160)
+
+            Text("Each step is a new longest run. Higher is farther.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+        .accessibilityIdentifier("run-history-longest-progression")
+    }
+
+    private var progressionList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Every record")
+                    .font(.headline)
+                Spacer()
+                Text("\(milestones.count) marks")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.bottom, 12)
+
+            ForEach(Array(newestFirst.enumerated()), id: \.element.id) { index, milestone in
+                milestoneRow(milestone, isCurrent: index == 0)
+                if index < newestFirst.count - 1 {
+                    Divider()
+                        .padding(.vertical, 10)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+        .accessibilityIdentifier("run-history-longest-list")
+    }
+
+    private func milestoneRow(_ milestone: RunLongestRunMilestone, isCurrent: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(milestone.distanceText)
+                        .font(.headline)
+                        .fontDesign(.rounded)
+                        .monospacedDigit()
+                    if isCurrent {
+                        Text("PR")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.green)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.green.opacity(0.15), in: .capsule)
+                    }
+                }
+                Text("\(milestone.timeText) · \(milestone.paceText) \(unit.paceLabel)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+
+            Spacer(minLength: 8)
+
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(milestone.date, format: .dateTime.month(.abbreviated).day().year())
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                if let extra = milestone.extraDistanceText {
+                    Text(extra)
+                        .font(.caption2)
+                        .foregroundStyle(.green)
+                        .monospacedDigit()
+                } else {
+                    Text("First on record")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
 /// Hero of the Trends tab: plots every run's average speed as dots with a
 /// best-fit trend line, plus a plain-language verdict, so "am I getting faster?"
 /// reads at a glance. Scrub the chart to inspect any single run.
@@ -1930,7 +2286,7 @@ private struct SpeedTrendCard: View {
                 .frame(height: 168)
 
             if selectedPoint == nil, trend.hasData {
-                legend
+                TrendChartLegend(showsTrendLine: trend.trendEnd != nil)
             }
         }
         .padding(16)
@@ -2017,7 +2373,7 @@ private struct SpeedTrendCard: View {
             }
             Spacer()
             if trend.hasData {
-                TrendVerdictBadge(trend: trend, unit: unit)
+                TrendVerdictBadge(verdict: .speed(trend, unit: unit))
             }
         }
     }
@@ -2076,29 +2432,6 @@ private struct SpeedTrendCard: View {
                 Text(point.date, format: .dateTime.month(.abbreviated).day().year())
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var legend: some View {
-        HStack(spacing: 16) {
-            HStack(spacing: 5) {
-                Circle()
-                    .fill(Color.green.opacity(0.4))
-                    .frame(width: 7, height: 7)
-                Text("Each run")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            if trend.trendEnd != nil {
-                HStack(spacing: 5) {
-                    Capsule()
-                        .fill(Color.green)
-                        .frame(width: 16, height: 3)
-                    Text("Trend")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
             }
         }
     }
@@ -2186,6 +2519,230 @@ private struct SpeedTrendCard: View {
     }
 }
 
+/// Plots how far every run in scope went with a best-fit line, so "are my
+/// runs getting longer?" reads at a glance. Scrub to inspect a single run.
+private struct RunLengthTrendCard: View {
+    let trend: RunLengthTrend
+    let scope: RunTrendScope
+    let unit: SpeedUnit
+
+    @State private var selectedPointID: String?
+
+    private var selectedPoint: RunLengthPoint? {
+        guard let selectedPointID else { return nil }
+        return trend.points.first { $0.id == selectedPointID }
+    }
+
+    // Distance starts at zero so a 3-mile run reads as a third of a 9-mile one.
+    private var distanceDomain: ClosedRange<Double> {
+        let values = trend.points.map(\.distance) + [trend.fittedStart, trend.fittedEnd].compactMap { $0 }
+        guard let highest = values.max(), highest > 0 else { return 0...1 }
+        return min(0, values.min() ?? 0)...(highest * 1.15)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Distance Trend")
+                        .font(.headline)
+                    Spacer()
+                    Text(scope.menuLabel)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Text("How far each run went in this range, with a best-fit line.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            metricRow
+                .frame(height: 52, alignment: .top)
+                .animation(.easeOut(duration: 0.12), value: selectedPointID)
+
+            chart
+                .frame(height: 168)
+
+            if selectedPoint == nil, trend.hasData {
+                TrendChartLegend(showsTrendLine: trend.hasTrendLine)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("run-history-distance-trend")
+        .sensoryFeedback(trigger: selectedPointID) { _, new in
+            new != nil ? .selection : nil
+        }
+        .onChange(of: trend.points) { _, _ in selectedPointID = nil }
+    }
+
+    @ViewBuilder
+    private var metricRow: some View {
+        if let selectedPoint {
+            scrubRow(for: selectedPoint)
+        } else {
+            idleRow
+        }
+    }
+
+    private var idleRow: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                if trend.hasData {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(trend.averageDistanceText)
+                            .font(.title)
+                            .fontWeight(.semibold)
+                            .fontDesign(.rounded)
+                            .monospacedDigit()
+                        Text(unit.distanceLabel)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("Average · \(trend.runCount) \(trend.runCount == 1 ? "run" : "runs")")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                } else {
+                    Text("—")
+                        .font(.title)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Spacer()
+            if trend.hasData {
+                TrendVerdictBadge(verdict: .runLength(trend))
+            }
+        }
+    }
+
+    private func scrubRow(for point: RunLengthPoint) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Image(systemName: RunHistorySymbols.distance)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(point.distanceValueText)
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .fontDesign(.rounded)
+                        .monospacedDigit()
+                    Text(unit.distanceLabel)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Label("\(point.paceText) \(unit.paceLabel)", systemImage: RunHistorySymbols.pace)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Image(systemName: RunHistorySymbols.duration)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(point.duration > 0 ? RunHistoryFormatters.duration(point.duration) : "--")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .fontDesign(.rounded)
+                        .monospacedDigit()
+                }
+                Text(point.date, format: .dateTime.month(.abbreviated).day().year())
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var chart: some View {
+        Chart {
+            ForEach(trend.points) { point in
+                PointMark(
+                    x: .value("Date", point.date),
+                    y: .value("Distance", point.distance)
+                )
+                .foregroundStyle(Color.green.opacity(0.4))
+                .symbolSize(30)
+            }
+
+            if let fittedStart = trend.fittedStart, let fittedEnd = trend.fittedEnd,
+               let first = trend.points.first, let last = trend.points.last {
+                ForEach([(first.date, fittedStart), (last.date, fittedEnd)], id: \.0) { end in
+                    LineMark(
+                        x: .value("Date", end.0),
+                        y: .value("Distance", end.1),
+                        series: .value("Series", "Trend")
+                    )
+                }
+                .foregroundStyle(Color.green)
+                .lineStyle(.init(lineWidth: 2.5, lineCap: .round))
+            }
+
+            if let selectedPoint {
+                RuleMark(x: .value("Selected date", selectedPoint.date))
+                    .foregroundStyle(Color.secondary.opacity(0.5))
+                    .lineStyle(.init(lineWidth: 1))
+
+                PointMark(
+                    x: .value("Selected date", selectedPoint.date),
+                    y: .value("Distance", selectedPoint.distance)
+                )
+                .foregroundStyle(Color(.systemBackground))
+                .symbolSize(70)
+
+                PointMark(
+                    x: .value("Selected date", selectedPoint.date),
+                    y: .value("Distance", selectedPoint.distance)
+                )
+                .foregroundStyle(Color.green)
+                .symbolSize(34)
+            }
+        }
+        .chartYScale(domain: distanceDomain)
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                AxisGridLine()
+                AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { _ in
+                AxisGridLine()
+                AxisValueLabel()
+            }
+        }
+        .chartOverlay { proxy in
+            ChartScrubOverlay(
+                proxy: proxy,
+                onScrub: { date in
+                    guard let nearest = trend.points.nearest(to: date, by: \.date),
+                          nearest.id != selectedPointID else { return }
+                    selectedPointID = nearest.id
+                },
+                onEnd: { selectedPointID = nil }
+            )
+        }
+        .overlay {
+            if trend.points.isEmpty {
+                ContentUnavailableView(
+                    "No runs in this range",
+                    systemImage: "chart.xyaxis.line",
+                    description: Text("Try a longer time range to see your distance trend.")
+                )
+                .background(Color(.systemBackground))
+            }
+        }
+        .accessibilityLabel("Distance per run, \(trend.runCount) runs")
+        .accessibilityIdentifier("run-history-distance-plot")
+    }
+}
+
 /// Shown when no single distance has enough runs in scope to chart a trend —
 /// distinct from "no runs at all" so the runner knows what unlocks it.
 private struct SpeedTrendEmptyCard: View {
@@ -2226,26 +2783,25 @@ private struct PaceTrendEmptyCard: View {
     }
 }
 
-/// Plain-language read on the trend line's direction. Stays muted for "steady"
-/// and "building" so the colored verdicts (faster/slower) carry the signal.
+/// Plain-language read on a trend line's direction. Stays muted for "steady"
+/// and "building" so the colored verdicts carry the signal.
 private struct TrendVerdictBadge: View {
-    let trend: RunSpeedTrend
-    let unit: SpeedUnit
+    let verdict: TrendVerdict
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 3) {
             HStack(spacing: 5) {
-                Image(systemName: icon)
+                Image(systemName: verdict.symbol)
                     .imageScale(.small)
-                Text(word)
+                Text(verdict.word)
             }
             .font(.caption.weight(.semibold))
-            .foregroundStyle(tint)
+            .foregroundStyle(verdict.tint)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(Capsule().fill(tint.opacity(0.15)))
+            .background(Capsule().fill(verdict.tint.opacity(0.15)))
 
-            if let detail {
+            if let detail = verdict.detail {
                 Text(detail)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -2253,50 +2809,81 @@ private struct TrendVerdictBadge: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityText)
+        .accessibilityLabel(verdict.accessibilityText)
     }
+}
 
-    private var icon: String {
+private struct TrendVerdict {
+    let symbol: String
+    let word: String
+    let tint: Color
+    let detail: String?
+    let accessibilityText: String
+
+    private static let muted = Color(.secondaryLabel)
+    private static let building = TrendVerdict(
+        symbol: "chart.dots.scatter",
+        word: "Building",
+        tint: muted,
+        detail: "Need 5+ runs",
+        accessibilityText: "Building, need at least 5 runs to show a trend"
+    )
+
+    static func speed(_ trend: RunSpeedTrend, unit: SpeedUnit) -> TrendVerdict {
+        let change = "\(trend.changeMagnitudeText) \(unit.speedLabel)"
         switch trend.direction {
-        case .faster: return "arrow.up.right"
-        case .slower: return "arrow.down.right"
-        case .steady: return "arrow.left.and.right"
-        case .insufficient: return "chart.dots.scatter"
+        case .faster:
+            return TrendVerdict(symbol: "arrow.up.right", word: "Faster", tint: .green, detail: "+\(change)", accessibilityText: "Trending faster, up \(change)")
+        case .slower:
+            return TrendVerdict(symbol: "arrow.down.right", word: "Slower", tint: .orange, detail: "−\(change)", accessibilityText: "Trending slower, down \(change)")
+        case .steady:
+            return TrendVerdict(symbol: "arrow.left.and.right", word: "Steady", tint: muted, detail: "Little change", accessibilityText: "Holding steady")
+        case .insufficient:
+            return building
         }
     }
 
-    private var word: String {
+    static func runLength(_ trend: RunLengthTrend) -> TrendVerdict {
+        let change = "\(trend.changeMagnitudeText) \(trend.unit.distanceLabel)"
+        let spokenChange = "\(trend.changeMagnitudeText) \(trend.unit == .mph ? "miles" : "kilometers")"
         switch trend.direction {
-        case .faster: return "Faster"
-        case .slower: return "Slower"
-        case .steady: return "Steady"
-        case .insufficient: return "Building"
+        case .longer:
+            return TrendVerdict(symbol: "arrow.up.right", word: "Longer", tint: .green, detail: "+\(change)", accessibilityText: "Runs trending longer, up \(spokenChange)")
+        case .shorter:
+            return TrendVerdict(symbol: "arrow.down.right", word: "Shorter", tint: .orange, detail: "−\(change)", accessibilityText: "Runs trending shorter, down \(spokenChange)")
+        case .steady:
+            return TrendVerdict(symbol: "arrow.left.and.right", word: "Steady", tint: muted, detail: "Little change", accessibilityText: "Run distance holding steady")
+        case .unclear:
+            return TrendVerdict(symbol: "arrow.up.arrow.down", word: "Mixed", tint: muted, detail: "No clear trend", accessibilityText: "Mixed, run distances vary too much to show a clear trend")
+        case .insufficient:
+            return building
         }
     }
+}
 
-    private var tint: Color {
-        switch trend.direction {
-        case .faster: return .green
-        case .slower: return .orange
-        case .steady, .insufficient: return Color(.secondaryLabel)
-        }
-    }
+private struct TrendChartLegend: View {
+    let showsTrendLine: Bool
 
-    private var detail: String? {
-        switch trend.direction {
-        case .faster: return "+\(trend.changeMagnitudeText) \(unit.speedLabel)"
-        case .slower: return "−\(trend.changeMagnitudeText) \(unit.speedLabel)"
-        case .steady: return "Little change"
-        case .insufficient: return "Need 5+ runs"
-        }
-    }
-
-    private var accessibilityText: String {
-        switch trend.direction {
-        case .faster: return "Trending faster, up \(trend.changeMagnitudeText) \(unit.speedLabel)"
-        case .slower: return "Trending slower, down \(trend.changeMagnitudeText) \(unit.speedLabel)"
-        case .steady: return "Holding steady"
-        case .insufficient: return "Building, need at least 5 runs to show a trend"
+    var body: some View {
+        HStack(spacing: 16) {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(Color.green.opacity(0.4))
+                    .frame(width: 7, height: 7)
+                Text("Each run")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if showsTrendLine {
+                HStack(spacing: 5) {
+                    Capsule()
+                        .fill(Color.green)
+                        .frame(width: 16, height: 3)
+                    Text("Trend")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 }
@@ -2359,6 +2946,7 @@ private struct WeeklyVolumeCard: View {
         .padding(16)
         .frame(maxWidth: .infinity)
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("run-history-volume-chart")
         .sensoryFeedback(.selection, trigger: selectedBar?.id)
         .onChange(of: bars) { _, _ in selectedDate = nil }
@@ -2534,7 +3122,7 @@ private struct WeeklyVolumeCard: View {
 private struct MonthAccordionList: View {
     let months: [RunHistoryMonth]
     let unit: SpeedUnit
-    let prBadgesByRunID: [UUID: [RunRecordTarget]]
+    let prBadgesByRunID: [UUID: [RunPRBadge]]
     @Binding var expandedMonthIDs: Set<String>
 
     var body: some View {
@@ -2624,7 +3212,7 @@ private struct MonthHeader: View {
 private struct ExpandedWeekSection: View {
     let week: RunHistoryWeek
     let unit: SpeedUnit
-    let prBadgesByRunID: [UUID: [RunRecordTarget]]
+    let prBadgesByRunID: [UUID: [RunPRBadge]]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -2644,7 +3232,7 @@ private struct ExpandedWeekSection: View {
 private struct CollapsedWeekSection: View {
     let week: RunHistoryWeek
     let unit: SpeedUnit
-    let prBadgesByRunID: [UUID: [RunRecordTarget]]
+    let prBadgesByRunID: [UUID: [RunPRBadge]]
     @Binding var isExpanded: Bool
 
     var body: some View {
@@ -2737,7 +3325,7 @@ private struct WeekHeader: View {
 private struct RunHistoryRow: View {
     let run: RunWorkout
     let unit: SpeedUnit
-    let prBadges: [RunRecordTarget]
+    let prBadges: [RunPRBadge]
 
     private var speedText: String {
         let value = unit == .mph ? run.averageSpeedMph : run.averageSpeedKph
@@ -2760,39 +3348,55 @@ private struct RunHistoryRow: View {
         RunHistoryFormatters.duration(run.duration)
     }
 
+    private func headerLine(showsBadges: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            HStack(spacing: 8) {
+                Text(run.startDate, format: .dateTime.month(.abbreviated).day())
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+                if showsBadges {
+                    badgeCapsules
+                }
+            }
+
+            Spacer(minLength: 12)
+
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(speedText)
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                    .fontDesign(.rounded)
+                    .foregroundStyle(.primary)
+                    .monospacedDigit()
+                Text(unit.speedLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var badgeCapsules: some View {
+        ForEach(prBadges) { badge in
+            PRBadgeCapsule(badge: badge)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                HStack(spacing: 8) {
-                    Text(run.startDate, format: .dateTime.month(.abbreviated).day())
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
-                    ForEach(prBadges) { target in
-                        Label("\(target.shortLabel) PR", systemImage: "rosette")
-                            .labelStyle(.titleAndIcon)
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.green)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(
-                                Capsule().fill(Color.green.opacity(0.15))
-                            )
+            if prBadges.isEmpty {
+                headerLine(showsBadges: false)
+            } else {
+                // A long run can hold several records at once; when they don't
+                // fit beside the date they move to their own wrapping line.
+                ViewThatFits(in: .horizontal) {
+                    headerLine(showsBadges: true)
+                    VStack(alignment: .leading, spacing: 6) {
+                        headerLine(showsBadges: false)
+                        FlowLayout(spacing: 6) {
+                            badgeCapsules
+                        }
                     }
-                }
-
-                Spacer(minLength: 12)
-
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(speedText)
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .fontDesign(.rounded)
-                        .foregroundStyle(.primary)
-                        .monospacedDigit()
-                    Text(unit.speedLabel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -2843,6 +3447,63 @@ private struct RunHistoryRow: View {
                 .frame(height: 0.5)
                 .padding(.leading, 16)
         }
+    }
+}
+
+private struct PRBadgeCapsule: View {
+    let badge: RunPRBadge
+
+    var body: some View {
+        Label(badge.title, systemImage: "rosette")
+            .labelStyle(.titleAndIcon)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(.green)
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                Capsule().fill(Color.green.opacity(0.15))
+            )
+            .accessibilityLabel(badge.accessibilityName)
+    }
+}
+
+/// Places subviews left to right, wrapping onto a new line when the row is full.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let frames = frames(for: subviews, maxWidth: proposal.width ?? .infinity)
+        let width = frames.map(\.maxX).max() ?? 0
+        let height = frames.map(\.maxY).max() ?? 0
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let frames = frames(for: subviews, maxWidth: bounds.width)
+        for (subview, frame) in zip(subviews, frames) {
+            subview.place(
+                at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                proposal: ProposedViewSize(frame.size)
+            )
+        }
+    }
+
+    private func frames(for subviews: Subviews, maxWidth: CGFloat) -> [CGRect] {
+        var frames: [CGRect] = []
+        var origin = CGPoint.zero
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
+            if origin.x > 0, origin.x + size.width > maxWidth {
+                origin = CGPoint(x: 0, y: origin.y + rowHeight + spacing)
+                rowHeight = 0
+            }
+            frames.append(CGRect(origin: origin, size: size))
+            origin.x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return frames
     }
 }
 
@@ -2946,6 +3607,50 @@ struct RunHistoryStats {
             map[record.runID, default: []].append(record.target)
         }
         return map
+    }
+
+    /// Every badge the Runs list shows, keyed by run: named-distance PRs first,
+    /// then the longest-run record.
+    static func prBadges(from records: [RunPersonalRecord], longestRunID: UUID?) -> [UUID: [RunPRBadge]] {
+        var map = personalRecordTargets(from: records).mapValues { $0.map(RunPRBadge.record) }
+        if let longestRunID {
+            map[longestRunID, default: []].append(.longestRun)
+        }
+        return map
+    }
+
+    /// The farthest run on record. A later run of the same distance did not set
+    /// a new record, so ties keep the earlier run, matching `longestRunProgression`.
+    static func longestRun(from runs: [RunWorkout]) -> RunWorkout? {
+        runs.filter { $0.distanceMeters > 0 }.min {
+            if $0.distanceMeters != $1.distanceMeters { return $0.distanceMeters > $1.distanceMeters }
+            return $0.startDate < $1.startDate
+        }
+    }
+
+    /// Returns each run that went farther than any run before it, oldest first.
+    static func longestRunProgression(from runs: [RunWorkout], unit: SpeedUnit) -> [RunLongestRunMilestone] {
+        let ordered = runs.filter { $0.distanceMeters > 0 }.sorted { $0.startDate < $1.startDate }
+        var milestones: [RunLongestRunMilestone] = []
+        var standing: RunWorkout?
+
+        for run in ordered {
+            if let standing, run.distanceMeters <= standing.distanceMeters { continue }
+            milestones.append(
+                RunLongestRunMilestone(
+                    id: run.id,
+                    unit: unit,
+                    date: run.startDate,
+                    distanceMeters: run.distanceMeters,
+                    duration: run.duration,
+                    previousDate: standing?.startDate,
+                    previousDistanceMeters: standing?.distanceMeters
+                )
+            )
+            standing = run
+        }
+
+        return milestones
     }
 
     /// Returns each effort that beat the standing record, oldest first.
@@ -3052,25 +3757,11 @@ struct RunHistoryStats {
         var trendEnd: RunChartPoint?
         var change = 0.0
 
-        if let first = points.first, let last = points.last, points.count >= 2 {
-            let origin = first.date.timeIntervalSince1970
-            let xs = points.map { ($0.date.timeIntervalSince1970 - origin) / 86_400.0 }
-            let n = Double(points.count)
-            let sumX = xs.reduce(0, +)
-            let sumY = speeds.reduce(0, +)
-            let sumXX = xs.reduce(0) { $0 + $1 * $1 }
-            let sumXY = zip(xs, speeds).reduce(0) { $0 + $1.0 * $1.1 }
-            let denominator = n * sumXX - sumX * sumX
-            if denominator != 0 {
-                let slope = (n * sumXY - sumX * sumY) / denominator
-                let intercept = (sumY - slope * sumX) / n
-                let lastX = xs.last ?? 0
-                let fittedStart = intercept
-                let fittedEnd = intercept + slope * lastX
-                change = fittedEnd - fittedStart
-                trendStart = RunChartPoint(id: "trend-start", date: first.date, speed: fittedStart, paceText: "", distanceValueText: "", avgHeartRate: nil)
-                trendEnd = RunChartPoint(id: "trend-end", date: last.date, speed: fittedEnd, paceText: "", distanceValueText: "", avgHeartRate: nil)
-            }
+        if let first = points.first, let last = points.last,
+           let fit = linearFit(dates: points.map(\.date), values: speeds) {
+            change = fit.change
+            trendStart = RunChartPoint(id: "trend-start", date: first.date, speed: fit.start, paceText: "", distanceValueText: "", avgHeartRate: nil)
+            trendEnd = RunChartPoint(id: "trend-end", date: last.date, speed: fit.end, paceText: "", distanceValueText: "", avgHeartRate: nil)
         }
 
         let direction: RunTrendDirection
@@ -3095,6 +3786,91 @@ struct RunHistoryStats {
             changeOverPeriod: change,
             direction: direction,
             unit: unit
+        )
+    }
+
+    /// Plots how far each run in scope went and fits a least squares line, so
+    /// "are my runs getting longer?" reads at a glance. Easy days and long runs
+    /// swing distance far more than speed, and that mix alone can tilt the line,
+    /// so a longer/shorter verdict also needs the slope to clear one standard
+    /// error; a tilt that doesn't is reported as unclear rather than steady.
+    static func runLengthTrend(
+        from runs: [RunWorkout],
+        scope: RunTrendScope,
+        unit: SpeedUnit,
+        referenceDate: Date = Date()
+    ) -> RunLengthTrend {
+        let lower = scope.lowerBound(from: referenceDate, calendar: calendar)
+        let points = runs
+            .filter { run in
+                run.distanceMeters > 0 && run.startDate <= referenceDate
+                    && (lower.map { run.startDate >= $0 } ?? true)
+            }
+            .sorted { $0.startDate < $1.startDate }
+            .map { run in
+                let pace = unit == .mph ? run.paceMinutesPerMile : run.paceMinutesPerKilometer
+                return RunLengthPoint(
+                    id: run.id.uuidString,
+                    date: run.startDate,
+                    distance: unit == .mph ? run.distanceMiles : run.distanceKilometers,
+                    duration: run.duration,
+                    paceText: run.duration > 0 ? pace.flatMap(ConversionEngine.formatPace) ?? "--" : "--"
+                )
+            }
+
+        let distances = points.map(\.distance)
+        let average = distances.isEmpty ? 0 : distances.reduce(0, +) / Double(distances.count)
+        let fit = linearFit(dates: points.map(\.date), values: distances)
+        let change = fit?.change ?? 0
+
+        let direction: RunLengthTrendDirection
+        if let fit, points.count >= 5 {
+            let band = max(average * 0.10, unit == .mph ? 0.25 : 0.4)
+            if abs(change) < band {
+                direction = .steady
+            } else if fit.tStatistic < 1 {
+                direction = .unclear
+            } else {
+                direction = change > 0 ? .longer : .shorter
+            }
+        } else {
+            direction = .insufficient
+        }
+
+        return RunLengthTrend(
+            points: points,
+            fittedStart: fit?.start,
+            fittedEnd: fit?.end,
+            averageDistance: average,
+            changeOverPeriod: change,
+            direction: direction,
+            unit: unit
+        )
+    }
+
+    /// Least squares line through the samples, as its fitted values at the
+    /// first and last sample dates. Nil below two samples or when every sample
+    /// shares one date.
+    private static func linearFit(dates: [Date], values: [Double]) -> LinearFit? {
+        guard dates.count >= 2, dates.count == values.count, let origin = dates.first else { return nil }
+        let xs = dates.map { $0.timeIntervalSince(origin) / 86_400.0 }
+        let n = Double(xs.count)
+        let meanX = xs.reduce(0, +) / n
+        let meanY = values.reduce(0, +) / n
+        let sxx = xs.reduce(0) { $0 + ($1 - meanX) * ($1 - meanX) }
+        guard sxx > 0 else { return nil }
+        let sxy = zip(xs, values).reduce(0) { $0 + ($1.0 - meanX) * ($1.1 - meanY) }
+        let slope = sxy / sxx
+        let intercept = meanY - slope * meanX
+        let squaredResiduals = zip(xs, values).reduce(0) { sum, sample in
+            let residual = sample.1 - (intercept + slope * sample.0)
+            return sum + residual * residual
+        }
+        let slopeError = n > 2 ? (squaredResiduals / (n - 2) / sxx).squareRoot() : .infinity
+        return LinearFit(
+            start: intercept,
+            end: intercept + slope * (xs.last ?? 0),
+            tStatistic: slopeError > 0 ? abs(slope) / slopeError : .infinity
         )
     }
 
@@ -3142,6 +3918,7 @@ struct RunHistoryStats {
         let prHighlightTargets = allRecords
             .filter { currentRunIDs.contains($0.runID) }
             .map(\.target)
+        let setsLongestRun = longestRun(from: runs).map { currentRunIDs.contains($0.id) } ?? false
         let elevations = currentRuns.compactMap(\.elevationGainMeters)
 
         return RunActivitySummary(
@@ -3160,7 +3937,8 @@ struct RunHistoryStats {
             elevationDataRunCount: elevations.count,
             activeWeekCount: activeWeekCount,
             elapsedWeekCount: elapsedWeekCount,
-            prHighlightTargets: prHighlightTargets
+            prHighlightTargets: prHighlightTargets,
+            setsLongestRun: setsLongestRun
         )
     }
 
@@ -3441,15 +4219,82 @@ struct RunRecordMilestone: Identifiable, Equatable {
     }
 
     var previousStoodText: String? {
-        guard let daysSincePrevious, daysSincePrevious > 0 else { return nil }
-        if daysSincePrevious < 60 {
-            return "Stood for \(daysSincePrevious) days"
+        daysSincePrevious.flatMap(RunHistoryFormatters.stood(days:))
+    }
+}
+
+struct RunLongestRunMilestone: Identifiable, Equatable {
+    let id: UUID
+    let unit: SpeedUnit
+    let date: Date
+    let distanceMeters: Double
+    let duration: TimeInterval
+    let previousDate: Date?
+    let previousDistanceMeters: Double?
+
+    var distance: Double { RunHistoryFormatters.distance(meters: distanceMeters, unit: unit) }
+    var distanceValueText: String { String(format: "%.2f", distance) }
+    var distanceText: String { "\(distanceValueText) \(unit.distanceLabel)" }
+    var timeText: String { duration > 0 ? RunHistoryFormatters.duration(duration) : "--" }
+
+    var paceText: String {
+        guard duration > 0, distance > 0 else { return "--" }
+        return ConversionEngine.formatPace((duration / 60.0) / distance) ?? "--"
+    }
+
+    var previousDistanceText: String? {
+        guard let previousDistanceMeters else { return nil }
+        let previous = RunHistoryFormatters.distance(meters: previousDistanceMeters, unit: unit)
+        return "\(String(format: "%.2f", previous)) \(unit.distanceLabel)"
+    }
+
+    /// How much farther this run went than the record it replaced, in the unit's distance.
+    var extraDistance: Double? {
+        guard let previousDistanceMeters else { return nil }
+        return RunHistoryFormatters.distance(meters: distanceMeters - previousDistanceMeters, unit: unit)
+    }
+
+    var extraDistanceText: String? {
+        guard let extraDistance, extraDistance > 0 else { return nil }
+        return "\(String(format: "%.2f", extraDistance)) \(unit.distanceLabel) farther"
+    }
+
+    var daysSincePrevious: Int? {
+        guard let previousDate else { return nil }
+        return RunHistoryStats.calendar.dateComponents([.day], from: previousDate, to: date).day
+    }
+
+    var previousStoodText: String? {
+        daysSincePrevious.flatMap(RunHistoryFormatters.stood(days:))
+    }
+}
+
+/// A record tag on a run in the Runs list.
+enum RunPRBadge: Hashable, Identifiable {
+    case record(RunRecordTarget)
+    case longestRun
+
+    static let longestRunLabel = "LONGEST"
+
+    var id: String {
+        switch self {
+        case .record(let target): return target.id
+        case .longestRun: return "longest-run"
         }
-        let months = Int((Double(daysSincePrevious) / 30.436_875).rounded())
-        if months < 24 {
-            return "Stood for \(months) months"
+    }
+
+    var title: String {
+        switch self {
+        case .record(let target): return "\(target.shortLabel) PR"
+        case .longestRun: return Self.longestRunLabel
         }
-        return "Stood for \(months / 12) years"
+    }
+
+    var accessibilityName: String {
+        switch self {
+        case .record(let target): return "\(target.displayName) personal record"
+        case .longestRun: return "Longest run"
+        }
     }
 }
 
@@ -3470,11 +4315,19 @@ struct RunActivitySummary: Equatable {
     let activeWeekCount: Int
     let elapsedWeekCount: Int
     let prHighlightTargets: [RunRecordTarget]
+    /// True when the all-time longest run falls inside this scope.
+    let setsLongestRun: Bool
 
-    var prHighlightCount: Int { prHighlightTargets.count }
+    var prHighlightCount: Int { prHighlightTargets.count + (setsLongestRun ? 1 : 0) }
 
     var prHighlightNames: String {
-        prHighlightTargets.map(\.shortLabel).joined(separator: " · ")
+        (prHighlightTargets.map(\.shortLabel) + (setsLongestRun ? [RunPRBadge.longestRunLabel] : []))
+            .joined(separator: " · ")
+    }
+
+    var prHighlightAccessibilityNames: String {
+        (prHighlightTargets.map(\.displayName) + (setsLongestRun ? ["Longest run"] : []))
+            .joined(separator: ", ")
     }
 
     var distanceText: String {
@@ -3636,6 +4489,52 @@ struct RunSpeedTrend: Equatable {
     var changeMagnitudeText: String { String(format: "%.2f", abs(changeOverPeriod)) }
 }
 
+struct RunLengthPoint: Identifiable, Equatable {
+    let id: String
+    let date: Date
+    let distance: Double
+    let duration: TimeInterval
+    let paceText: String
+
+    var distanceValueText: String { String(format: "%.2f", distance) }
+}
+
+enum RunLengthTrendDirection: Equatable {
+    case longer
+    case steady
+    case shorter
+    /// The line tilts, but run-to-run scatter is too wide to call it.
+    case unclear
+    case insufficient
+}
+
+private struct LinearFit {
+    let start: Double
+    let end: Double
+    /// Slope over its standard error: how clearly the tilt stands out from the scatter.
+    let tStatistic: Double
+
+    var change: Double { end - start }
+}
+
+/// Distance of every run in scope plus a least squares best-fit line, so the
+/// Trends tab can say whether runs are getting longer.
+struct RunLengthTrend: Equatable {
+    let points: [RunLengthPoint]
+    let fittedStart: Double?
+    let fittedEnd: Double?
+    let averageDistance: Double
+    let changeOverPeriod: Double
+    let direction: RunLengthTrendDirection
+    let unit: SpeedUnit
+
+    var hasData: Bool { points.isEmpty == false }
+    var runCount: Int { points.count }
+    var hasTrendLine: Bool { fittedStart != nil && fittedEnd != nil }
+    var averageDistanceText: String { String(format: "%.1f", averageDistance) }
+    var changeMagnitudeText: String { String(format: "%.1f", abs(changeOverPeriod)) }
+}
+
 /// A Speed Trend scoped to a single named distance, used to drive the Trends
 /// tab's per-distance chart and its distance picker.
 struct RunDistanceTrend: Identifiable, Equatable {
@@ -3703,6 +4602,7 @@ private enum RunTrendMetric: String, CaseIterable, Hashable, Identifiable {
     case speed
     case pace
     case volume
+    case distance
 
     var id: String { rawValue }
 
@@ -3711,6 +4611,7 @@ private enum RunTrendMetric: String, CaseIterable, Hashable, Identifiable {
         case .speed: return "Speed"
         case .pace: return "Pace"
         case .volume: return "Volume"
+        case .distance: return "Distance"
         }
     }
 
@@ -3718,7 +4619,8 @@ private enum RunTrendMetric: String, CaseIterable, Hashable, Identifiable {
         switch self {
         case .speed: return RunHistorySymbols.speed
         case .pace: return RunHistorySymbols.pace
-        case .volume: return RunHistorySymbols.distance
+        case .volume: return "chart.bar"
+        case .distance: return RunHistorySymbols.distance
         }
     }
 }
@@ -4049,6 +4951,22 @@ private enum RunHistoryFormatters {
             return String(format: "%d:%02d:%02d", h, m, s)
         }
         return String(format: "%d:%02d", m, s)
+    }
+
+    static func distance(meters: Double, unit: SpeedUnit) -> Double {
+        unit == .mph ? meters / 1609.34 : meters / 1000.0
+    }
+
+    static func stood(days: Int) -> String? {
+        guard days > 0 else { return nil }
+        if days < 60 {
+            return "Stood for \(days) days"
+        }
+        let months = Int((Double(days) / 30.436_875).rounded())
+        if months < 24 {
+            return "Stood for \(months) months"
+        }
+        return "Stood for \(months / 12) years"
     }
 
     static func gap(_ interval: TimeInterval) -> String {
