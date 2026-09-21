@@ -188,7 +188,7 @@ struct ReviewRegressionTests {
     }
 
     @Test func favoriteButtonRemainsOutsideCombinedAccessibilityElement() throws {
-        let contentView = try testFileContents("pace-to-mph", "ContentView.swift")
+        let contentView = try testFileContents("pace-to-mph", "Features/Converter/ContentView+Converter.swift")
         let resultSection = try #require(
             slice(
                 in: contentView,
@@ -208,7 +208,7 @@ struct ReviewRegressionTests {
     }
 
     @Test func favoritesRowKeepsRemoveButtonFocusable() throws {
-        let favoritesView = try testFileContents("pace-to-mph", "FavoritesView.swift")
+        let favoritesView = try testFileContents("pace-to-mph", "Features/Favorites/FavoritesView.swift")
         let rowSection = try #require(
             slice(
                 in: favoritesView,
@@ -225,7 +225,7 @@ struct ReviewRegressionTests {
     }
 
     @Test func favoriteButtonsUseActionBasedLabels() throws {
-        let contentView = try testFileContents("pace-to-mph", "ContentView.swift")
+        let contentView = try testFileContents("pace-to-mph", "Features/Converter/ContentView+Converter.swift")
 
         #expect(!contentView.contains("Toggle favorite"))
         #expect(contentView.contains("Add to favorites"))
@@ -245,7 +245,7 @@ struct ReviewRegressionTests {
     // Regression: HealthKit hides read-denial; empty-state must offer a
     // recovery path via Settings (read-only apps don't appear in Health app).
     @Test func runHistoryEmptyStateOffersSettingsRecovery() throws {
-        let view = try testFileContents("pace-to-mph", "RunHistoryView.swift")
+        let view = try testFileContents("pace-to-mph", "Features/RunHistory/RunHistoryView.swift")
         let emptyView = try #require(
             slice(in: view, from: "private var emptyRunsView", to: "}\n}")
         )
@@ -274,7 +274,7 @@ struct ReviewRegressionTests {
     // is backgrounded; on return the view's .task does not refire, so we must
     // refresh on scenePhase -> .active.
     @Test func runHistoryRefreshesOnForeground() throws {
-        let view = try testFileContents("pace-to-mph", "RunHistoryView.swift")
+        let view = try testFileContents("pace-to-mph", "Features/RunHistory/RunHistoryView.swift")
         #expect(view.contains("scenePhase"))
         #expect(view.contains(".onChange(of: scenePhase)"))
         #expect(view.contains("newPhase == .active"))

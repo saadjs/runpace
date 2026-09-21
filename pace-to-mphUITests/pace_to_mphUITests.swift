@@ -197,22 +197,45 @@ final class pace_to_mphUITests: XCTestCase {
 
         // Each tap re-lays out the scroll view, so scroll the next control back
         // into view rather than assuming it held its position.
-        tapAfterScrolling(app.segmentedControls.buttons["Pace"], in: app)
+        selectSegment("Pace", in: app)
         XCTAssertTrue(element("run-history-pace-trend", in: app).waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Average /mi for your 5K runs only."].exists)
 
-        tapAfterScrolling(app.segmentedControls.buttons["10K"], in: app)
+        selectSegment("10K", in: app)
         XCTAssertTrue(app.staticTexts["Average /mi for your 10K runs only."].waitForExistence(timeout: 3))
 
         // Switching distance makes the taller Pace card push the metric picker
         // above the lazy viewport. Return to the top before finding it again.
         for _ in 0..<6 { app.swipeDown() }
         XCTAssertTrue(scrollToElement(element("run-history-trend-metric", in: app), in: app))
-        tapAfterScrolling(app.segmentedControls.buttons["Speed"], in: app)
+        selectSegment("Speed", in: app)
         XCTAssertTrue(app.staticTexts["Your 10K runs are trending based on comparable efforts only."].waitForExistence(timeout: 3))
 
-        tapAfterScrolling(app.segmentedControls.buttons["Volume"], in: app)
+        selectSegment("Volume", in: app)
         XCTAssertTrue(element("run-history-volume-chart", in: app).waitForExistence(timeout: 5))
+
+        selectSegment("Distance", in: app)
+        XCTAssertTrue(element("run-history-distance-trend", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["How far each run went in this range, with a best-fit line."].exists)
+        XCTAssertTrue(scrollToElement(element("run-history-distance-plot", in: app), in: app))
+        addScreenshot(named: "distance-trend")
+    }
+
+    @MainActor
+    func testDistanceTrendChartsEveryRunInRange() throws {
+        let app = launchRunHistory(with: "-runHistoryDemoRecordsData")
+
+        app.segmentedControls.buttons["Trends"].tap()
+        XCTAssertTrue(element("run-history-trend-metric", in: app).waitForExistence(timeout: 5))
+        let scope = app.buttons["Trend scope"]
+        tapAfterScrolling(scope, in: app)
+        app.buttons["All time"].tap()
+
+        selectSegment("Distance", in: app)
+        XCTAssertTrue(element("run-history-distance-trend", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(scrollToElement(element("run-history-distance-plot", in: app), in: app))
+        XCTAssertTrue(app.staticTexts["Average · 15 runs"].exists)
+        addScreenshot(named: "distance-trend-all-time")
     }
 
     @MainActor
@@ -225,7 +248,7 @@ final class pace_to_mphUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Average · 6 runs"].exists)
         XCTAssertTrue(app.staticTexts["Faster"].exists)
 
-        app.segmentedControls.buttons["5K"].tap()
+        selectSegment("5K", in: app)
         XCTAssertTrue(app.staticTexts["Your 5K runs are trending based on comparable efforts only."].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["5 of 6 runs included · 2.95–3.26 mi"].exists)
         XCTAssertTrue(app.staticTexts["Average · 5 runs"].exists)
@@ -312,7 +335,7 @@ final class pace_to_mphUITests: XCTestCase {
         XCTAssertEqual(first.value as? String, "Expanded")
         XCTAssertEqual(second.value as? String, "Collapsed")
 
-        second.tap()
+        tapMonthHeader(second)
 
         XCTAssertTrue(
             waitForValue("Expanded", on: second),
@@ -330,7 +353,7 @@ final class pace_to_mphUITests: XCTestCase {
         )
 
         // And collapsing again is still independent.
-        second.tap()
+        tapMonthHeader(second)
         XCTAssertTrue(waitForValue("Collapsed", on: second))
         XCTAssertEqual(first.value as? String, "Expanded")
     }
@@ -366,10 +389,55 @@ final class pace_to_mphUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Run History"].waitForExistence(timeout: 3))
     }
 
+    @MainActor
+    func testLongestRunRecordShowsBadgeAndHistory() throws {
+        let app = launchRunHistory(with: "-runHistoryDemoRecordsData")
+
+        XCTAssertTrue(app.navigationBars["Run History"].waitForExistence(timeout: 5))
+        let yearMenu = element("run-history-year-filter", in: app)
+        XCTAssertTrue(yearMenu.waitForExistence(timeout: 5))
+        yearMenu.tap()
+        app.buttons["All Time"].tap()
+        // The records demo's longest run is 500 days old, in a collapsed month.
+        tapAfterScrolling(monthCard(containing: monthYearLabel(daysAgo: 500), in: app), in: app)
+        let longestBadge = app.staticTexts["Longest run"]
+        XCTAssertTrue(scrollToElement(longestBadge, in: app), "The longest run had no Longest badge in the Runs list")
+        addScreenshot(named: "longest-run-badge")
+
+        for _ in 0..<8 { app.swipeDown() }
+        app.segmentedControls.buttons["Trends"].tap()
+        let moreInsights = app.buttons["run-history-more-insights"]
+        tapAfterScrolling(moreInsights, in: app)
+        XCTAssertTrue(element("run-history-personal-bests", in: app).waitForExistence(timeout: 5))
+
+        let longestCell = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] 'Longest run personal best'")
+        ).firstMatch
+        XCTAssertTrue(scrollToElement(longestCell, in: app))
+        addScreenshot(named: "longest-run-tile")
+        longestCell.tap()
+
+        XCTAssertTrue(app.navigationBars["Longest Run"].waitForExistence(timeout: 5))
+        XCTAssertTrue(element("run-history-longest-current", in: app).waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Previous longest"].exists)
+        addScreenshot(named: "longest-run-detail")
+
+        XCTAssertTrue(scrollToElement(app.staticTexts["Every record"], in: app))
+        addScreenshot(named: "longest-run-progression")
+
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.navigationBars["Run History"].waitForExistence(timeout: 3))
+    }
+
     private func monthCards(in app: XCUIApplication) -> XCUIElementQuery {
         app.buttons.matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "run-history-month-card-")
         )
+    }
+
+    // iOS 27 reports an expanded card's whole body as its button frame, so a plain tap lands on a run row.
+    private func tapMonthHeader(_ card: XCUIElement) {
+        card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 22)).tap()
     }
 
     private func waitForValue(_ expected: String, on element: XCUIElement) -> Bool {
@@ -387,6 +455,13 @@ final class pace_to_mphUITests: XCTestCase {
         let calendar = Calendar.current
         let date = calendar.date(byAdding: .day, value: -daysAgo, to: Date()) ?? Date()
         return String(calendar.component(.year, from: date))
+    }
+
+    private func monthYearLabel(daysAgo: Int) -> String {
+        let date = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date()) ?? Date()
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("MMM yyyy")
+        return formatter.string(from: date)
     }
 
     private func monthCard(containing text: String, in app: XCUIApplication) -> XCUIElement {
@@ -426,6 +501,23 @@ final class pace_to_mphUITests: XCTestCase {
         element.tap()
     }
 
+    // On iOS 27 a tap that lands while the cards above are still animating can miss the segment.
+    @MainActor
+    private func selectSegment(
+        _ title: String,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let segment = app.segmentedControls.buttons[title]
+        for _ in 0..<3 {
+            tapAfterScrolling(segment, in: app, file: file, line: line)
+            let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: segment)
+            if XCTWaiter().wait(for: [selected], timeout: 2) == .completed { return }
+        }
+        XCTFail("The \(title) segment never became selected", file: file, line: line)
+    }
+
     @MainActor
     private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
         for _ in 0..<20 {
@@ -438,7 +530,7 @@ final class pace_to_mphUITests: XCTestCase {
             let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: endY))
             start.press(forDuration: 0.01, thenDragTo: end)
         }
-        return element.exists
+        return element.exists && element.isHittable
     }
 
     private func element(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
