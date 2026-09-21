@@ -1,6 +1,6 @@
 import Foundation
 
-enum RunHistoryFormatters {
+nonisolated enum RunHistoryFormatters {
     static func decimal(_ value: Double, fractionDigits: Int) -> String {
         String(format: "%.\(fractionDigits)f", value)
     }

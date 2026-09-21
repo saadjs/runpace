@@ -64,6 +64,7 @@ struct PersonalBestsGrid: View {
                 }
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("run-history-personal-bests")
         .sheet(item: $selection) { selection in
             switch selection {

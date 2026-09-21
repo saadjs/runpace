@@ -44,6 +44,7 @@ struct SpeedTrendCard: View {
         .padding(16)
         .frame(maxWidth: .infinity)
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("run-history-speed-trend")
         .sensoryFeedback(trigger: selectedPoint?.id) { _, new in
             new != nil ? .selection : nil

@@ -33,6 +33,7 @@ struct RunHistoryRow: View {
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .foregroundStyle(.primary)
+                    .fixedSize()
                 if showsBadges {
                     badgeCapsules
                 }
@@ -60,6 +61,44 @@ struct RunHistoryRow: View {
         }
     }
 
+    private func metricsLine(font: Font) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Label(distanceText, systemImage: RunHistorySymbols.distance)
+                .font(font)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .fixedSize()
+
+            Label("\(paceText) \(unit.paceLabel)", systemImage: RunHistorySymbols.pace)
+                .font(font)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .fixedSize()
+
+            if let heartRate = run.avgHeartRate {
+                HStack(spacing: 3) {
+                    Image(systemName: RunHistorySymbols.heartRate)
+                        .imageScale(.small)
+                        .foregroundStyle(.pink)
+                    Text("\(heartRate)")
+                        .font(font)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                .fixedSize()
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Average heart rate \(heartRate) beats per minute")
+            }
+
+            Label(durationText, systemImage: RunHistorySymbols.duration)
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+                .monospacedDigit()
+                .fixedSize()
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if prBadges.isEmpty {
@@ -78,43 +117,11 @@ struct RunHistoryRow: View {
                 }
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Label(distanceText, systemImage: RunHistorySymbols.distance)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-
-                Label("\(paceText) \(unit.paceLabel)", systemImage: RunHistorySymbols.pace)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-
-                if let heartRate = run.avgHeartRate {
-                    HStack(spacing: 3) {
-                        Image(systemName: RunHistorySymbols.heartRate)
-                            .imageScale(.small)
-                            .foregroundStyle(.pink)
-                        Text("\(heartRate)")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Average heart rate \(heartRate) beats per minute")
-                }
-
-                Spacer(minLength: 8)
-
-                Label(durationText, systemImage: RunHistorySymbols.duration)
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-                    .monospacedDigit()
+            // Shrink the metrics font rather than truncating values on narrow rows.
+            ViewThatFits(in: .horizontal) {
+                metricsLine(font: .subheadline)
+                metricsLine(font: .footnote)
+                metricsLine(font: .caption)
             }
         }
         .padding(.horizontal, 16)
@@ -137,6 +144,7 @@ private struct PRBadgeCapsule: View {
             .font(.caption2.weight(.medium))
             .foregroundStyle(.green)
             .lineLimit(1)
+            .fixedSize()
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(

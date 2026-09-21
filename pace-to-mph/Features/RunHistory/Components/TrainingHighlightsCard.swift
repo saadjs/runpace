@@ -59,6 +59,7 @@ struct TrainingHighlightsCard: View {
         .padding(16)
         .frame(maxWidth: .infinity)
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("run-history-training-highlights")
     }
 
