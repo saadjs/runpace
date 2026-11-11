@@ -9,6 +9,14 @@ struct RunSummaryStrip: View {
         VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 0) {
                 RunSummaryMetric(
+                    value: "\(summary.runCount)",
+                    label: "Total runs",
+                    systemImage: RunHistorySymbols.runs
+                )
+
+                Divider().frame(height: 44)
+
+                RunSummaryMetric(
                     value: summary.distanceText,
                     label: unit == .mph ? "Total mi" : "Total km",
                     systemImage: RunHistorySymbols.distance

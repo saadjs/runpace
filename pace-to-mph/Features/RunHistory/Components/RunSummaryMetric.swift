@@ -15,7 +15,7 @@ struct RunSummaryMetric: View {
                 .foregroundStyle(isAccent ? Color.green : .primary)
                 .monospacedDigit()
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.6)
 
             HStack(spacing: 4) {
                 if let systemImage {
@@ -26,9 +26,9 @@ struct RunSummaryMetric: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(1)
-            .minimumScaleFactor(0.8)
+            .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 4)
     }
 }
