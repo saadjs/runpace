@@ -5,6 +5,7 @@ enum RunTrendMetric: String, CaseIterable, Hashable, Identifiable {
     case pace
     case volume
     case distance
+    case effort
 
     var id: String { rawValue }
 
@@ -14,6 +15,7 @@ enum RunTrendMetric: String, CaseIterable, Hashable, Identifiable {
         case .pace: return "Pace"
         case .volume: return "Volume"
         case .distance: return "Distance"
+        case .effort: return "Effort"
         }
     }
 
@@ -23,6 +25,7 @@ enum RunTrendMetric: String, CaseIterable, Hashable, Identifiable {
         case .pace: return RunHistorySymbols.pace
         case .volume: return "chart.bar"
         case .distance: return RunHistorySymbols.distance
+        case .effort: return RunHistorySymbols.effort
         }
     }
 }

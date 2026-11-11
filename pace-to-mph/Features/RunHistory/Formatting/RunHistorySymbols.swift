@@ -8,4 +8,6 @@ enum RunHistorySymbols {
     static let pace = "gauge.with.dots.needle.67percent"
     static let runs = "figure.run"
     static let heartRate = "bolt.heart"
+    static let elevation = "mountain.2"
+    static let effort = "heart.circle"
 }

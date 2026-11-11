@@ -54,20 +54,39 @@ struct RunActivitySummary: Equatable {
         unit == .mph ? "mi" : "km"
     }
 
+    /// Every delta hangs on this one check so the three appear and disappear
+    /// together. Gating on the run count alone is not enough: the count
+    /// subtracts cleanly from anything, while distance and pace divide, so a
+    /// window holding only zero-distance workouts (a treadmill run logged
+    /// without distance) would still show a lone "+3 vs prev" beside two
+    /// blanks. Both windows therefore have to carry real distance and time.
+    var hasComparableBaseline: Bool {
+        hasPreviousPeriod
+            && previousRunCount > 0 && previousDistance > 0 && previousDuration > 0
+            && runCount > 0 && distance > 0 && duration > 0
+    }
+
+    /// True only when the prior period was genuinely empty. The other reasons
+    /// a comparison can fail are degenerate enough that naming them would say
+    /// something false, so those just drop the deltas silently.
+    var lacksBaselineForComparison: Bool {
+        hasPreviousPeriod && previousRunCount == 0
+    }
+
     var distanceDeltaPercent: Double? {
-        guard hasPreviousPeriod, previousDistance > 0 else { return nil }
+        guard hasComparableBaseline, previousDistance > 0 else { return nil }
         return (distance - previousDistance) / previousDistance
     }
 
     var runCountDelta: Int? {
-        guard hasPreviousPeriod else { return nil }
+        guard hasComparableBaseline else { return nil }
         return runCount - previousRunCount
     }
 
     /// Positive means the current pace is faster, matching the positive/green
     /// semantics used by the other comparison metrics.
     var paceImprovementPercent: Double? {
-        guard hasPreviousPeriod,
+        guard hasComparableBaseline,
               let current = averagePaceMinutes,
               let previous = previousAveragePaceMinutes,
               previous > 0 else { return nil }

@@ -59,6 +59,10 @@ extension RunHistoryContent {
         RunHistoryStats.volumeBars(from: runs, scope: selectedTrendScope, unit: unit)
     }
 
+    var effortTrend: RunEffortTrend {
+        RunHistoryStats.effortTrend(from: runs, scope: selectedTrendScope, unit: unit)
+    }
+
     var runLengthTrend: RunLengthTrend {
         RunHistoryStats.runLengthTrend(from: runs, scope: selectedTrendScope, unit: unit)
     }

@@ -60,6 +60,23 @@ struct TrendVerdict {
         }
     }
 
+    /// Inverted against the other verdicts: a falling line means fewer beats
+    /// spent per mile, which is the good direction.
+    static func effort(_ trend: RunEffortTrend) -> TrendVerdict {
+        let change = "\(trend.changeMagnitudeText) \(trend.unit.effortLabel)"
+        let spokenChange = "\(trend.changeMagnitudeText) beats per \(trend.unit == .mph ? "mile" : "kilometer")"
+        switch trend.direction {
+        case .improving:
+            return TrendVerdict(symbol: "arrow.down.right", word: "Easier", tint: .green, detail: "−\(change)", accessibilityText: "Running easier, down \(spokenChange)")
+        case .declining:
+            return TrendVerdict(symbol: "arrow.up.right", word: "Harder", tint: .orange, detail: "+\(change)", accessibilityText: "Running harder, up \(spokenChange)")
+        case .steady:
+            return TrendVerdict(symbol: "arrow.left.and.right", word: "Steady", tint: muted, detail: "Little change", accessibilityText: "Effort holding steady")
+        case .insufficient:
+            return building
+        }
+    }
+
     static func runLength(_ trend: RunLengthTrend) -> TrendVerdict {
         let change = "\(trend.changeMagnitudeText) \(trend.unit.distanceLabel)"
         let spokenChange = "\(trend.changeMagnitudeText) \(trend.unit == .mph ? "miles" : "kilometers")"

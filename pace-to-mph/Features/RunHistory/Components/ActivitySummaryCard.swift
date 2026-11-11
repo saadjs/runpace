@@ -43,6 +43,12 @@ struct ActivitySummaryCard: View {
                 )
             }
 
+            if summary.lacksBaselineForComparison {
+                Text("No runs in the previous period to compare against.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             // Negative insets let the divider run edge to edge inside the card.
             RunCadenceFooter(cadence: summary.cadence)
                 .padding(.horizontal, -16)
@@ -123,7 +129,9 @@ struct ActivitySummaryCard: View {
                     .foregroundStyle(deltaColor(for: delta))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-            } else {
+            } else if summary.hasComparableBaseline {
+                // Keeps the three columns on a shared baseline when only some
+                // of them have a delta to show.
                 Text(" ")
                     .font(.caption2)
             }

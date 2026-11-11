@@ -54,6 +54,10 @@ struct TrendScopeMenu: View {
     }
 }
 
+/// A scrolling row of chips rather than a segmented control: segments divide
+/// the width evenly between them, so each new metric squeezes every label.
+/// Chips size to their own text and scroll, which holds at any count and at
+/// any Dynamic Type size.
 struct TrendMetricPicker: View {
     @Binding var selection: RunTrendMetric
 
@@ -61,17 +65,53 @@ struct TrendMetricPicker: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Explore Trends")
                 .font(.headline)
+                .padding(.horizontal, 16)
 
-            Picker("Trend metric", selection: $selection) {
-                ForEach(RunTrendMetric.allCases) { metric in
-                    Label(metric.title, systemImage: metric.systemImage)
-                        .tag(metric)
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(RunTrendMetric.allCases) { metric in
+                        chip(for: metric)
+                    }
                 }
+                .padding(.horizontal, 16)
+                .scrollTargetLayout()
             }
-            .pickerStyle(.segmented)
+            .scrollIndicators(.hidden)
+            // Keeps the selected metric in view when it is chosen off-screen
+            // or restored from a previous session.
+            .scrollPosition(id: scrolledMetric, anchor: .center)
             .accessibilityIdentifier("run-history-trend-metric")
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Trend metric")
         }
-        .padding(16)
+        .padding(.vertical, 16)
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+    }
+
+    private var scrolledMetric: Binding<RunTrendMetric?> {
+        .init(get: { selection }, set: { _ in })
+    }
+
+    private func chip(for metric: RunTrendMetric) -> some View {
+        let isSelected = metric == selection
+        return Button {
+            selection = metric
+        } label: {
+            Label(metric.title, systemImage: metric.systemImage)
+                .labelStyle(.titleAndIcon)
+                .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? Color.green : Color.primary)
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .background {
+                    Capsule()
+                        .fill(isSelected ? Color.green.opacity(0.15) : Color(.tertiarySystemFill))
+                }
+        }
+        .buttonStyle(.plain)
+        .id(metric)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
