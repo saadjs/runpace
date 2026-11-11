@@ -23,8 +23,11 @@ struct RunCadenceFooter: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
+                        // Wraps rather than truncating at the largest text
+                        // sizes. No minimumScaleFactor: with lines unlimited
+                        // the text wraps before it would ever scale, so the
+                        // floor never engaged.
                         .multilineTextAlignment(.center)
-                        .minimumScaleFactor(0.8)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)

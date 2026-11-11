@@ -61,8 +61,6 @@ struct TrendScopeMenu: View {
 struct TrendMetricPicker: View {
     @Binding var selection: RunTrendMetric
 
-    @Namespace private var chipNamespace
-
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Explore Trends")
@@ -108,14 +106,8 @@ struct TrendMetricPicker: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 9)
                 .background {
-                    if isSelected {
-                        Capsule()
-                            .fill(Color.green.opacity(0.15))
-                            .matchedGeometryEffect(id: "trend-metric-chip", in: chipNamespace)
-                    } else {
-                        Capsule()
-                            .fill(Color(.tertiarySystemFill))
-                    }
+                    Capsule()
+                        .fill(isSelected ? Color.green.opacity(0.15) : Color(.tertiarySystemFill))
                 }
         }
         .buttonStyle(.plain)
