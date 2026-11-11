@@ -1,15 +1,11 @@
 import SwiftUI
 
 extension RunHistoryContent {
+    // No title row: the run count moved into the summary tiles, and the unit
+    // it used to sit beside is on the Avg tile and on every run row already.
+    // Left on its own the lone unit read as a heading that had failed to load.
     var header: some View {
         VStack(spacing: 12) {
-            // The run count used to lead this row. The summary tiles state it
-            // outright now, so only the unit the screen is reading in is left.
-            Text(unit.speedLabel)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-
             modePicker
             if selectedMode == .runs {
                 filterPicker
