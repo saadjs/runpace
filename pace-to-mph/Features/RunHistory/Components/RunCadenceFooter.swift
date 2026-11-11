@@ -5,11 +5,16 @@ import SwiftUI
 /// too short for an average to differ from the total.
 struct RunCadenceFooter: View {
     let cadence: RunCadence
+    /// Inside a card the footer needs a rule to divide it from the content
+    /// above. Standing on its own surface it does not.
+    var showsSeparator = true
 
     var body: some View {
         if let averageText = cadence.averageText {
             VStack(spacing: 0) {
-                Divider()
+                if showsSeparator {
+                    Divider()
+                }
                 HStack(spacing: 6) {
                     Image(systemName: "repeat")
                         .imageScale(.small)
@@ -18,7 +23,7 @@ struct RunCadenceFooter: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
-                        .lineLimit(1)
+                        .multilineTextAlignment(.center)
                         .minimumScaleFactor(0.8)
                 }
                 .frame(maxWidth: .infinity)
