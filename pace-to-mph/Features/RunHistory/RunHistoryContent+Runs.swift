@@ -3,18 +3,12 @@ import SwiftUI
 extension RunHistoryContent {
     var header: some View {
         VStack(spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(headerTitleText)
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.primary)
-
-                Spacer()
-
-                Text(unit.speedLabel)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+            // The run count used to lead this row. The summary tiles state it
+            // outright now, so only the unit the screen is reading in is left.
+            Text(unit.speedLabel)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .trailing)
 
             modePicker
             if selectedMode == .runs {
@@ -22,15 +16,6 @@ extension RunHistoryContent {
             }
         }
         .tint(.green)
-    }
-
-    var headerTitleText: String {
-        switch selectedMode {
-        case .runs:
-            return summary.runCountText
-        case .trends:
-            return "\(runs.count) \(runs.count == 1 ? "run" : "runs") tracked"
-        }
     }
 
     var modePicker: some View {

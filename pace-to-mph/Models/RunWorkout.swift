@@ -58,4 +58,37 @@ nonisolated struct RunWorkout: Identifiable, Hashable {
         guard distanceKilometers > 0 else { return nil }
         return (duration / 60.0) / distanceKilometers
     }
+
+    func distance(in unit: SpeedUnit) -> Double {
+        unit == .mph ? distanceMiles : distanceKilometers
+    }
+
+    func paceMinutes(in unit: SpeedUnit) -> Double? {
+        unit == .mph ? paceMinutesPerMile : paceMinutesPerKilometer
+    }
+
+    func averageSpeed(in unit: SpeedUnit) -> Double {
+        unit == .mph ? averageSpeedMph : averageSpeedKph
+    }
+
+    /// Elevation gain in the unit system's display units, or nil when the
+    /// source did not record it. A recorded flat run is 0, not nil.
+    func elevationGain(in unit: SpeedUnit) -> Double? {
+        guard let elevationGainMeters else { return nil }
+        return unit == .mph ? elevationGainMeters * 3.28084 : elevationGainMeters
+    }
+
+    /// Heartbeats spent covering one mile/kilometre: average heart rate times
+    /// the minutes run, divided by the distance. It pairs effort with output,
+    /// so the same pace at a lower heart rate scores better. Lower is fitter,
+    /// which is why trends on it read inverted from speed.
+    ///
+    /// Nil when the run carries no heart rate, which phone-logged runs often
+    /// do not.
+    func beatsPerDistanceUnit(in unit: SpeedUnit) -> Double? {
+        guard let avgHeartRate, avgHeartRate > 0, duration > 0 else { return nil }
+        let distance = distance(in: unit)
+        guard distance > 0 else { return nil }
+        return (Double(avgHeartRate) * (duration / 60.0)) / distance
+    }
 }

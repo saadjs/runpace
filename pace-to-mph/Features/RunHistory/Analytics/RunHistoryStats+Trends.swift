@@ -74,6 +74,87 @@ extension RunHistoryStats {
         )
     }
 
+    /// Plots heartbeats spent per mile/kilometre for every run in scope that
+    /// recorded a heart rate, with a least squares best-fit line. Same verdict
+    /// discipline as the speed trend: the line is drawn at >=2 runs, a verdict
+    /// is only claimed at >=5 with a wide steady band, and a tilt that does not
+    /// stand out from the scatter stays "steady" rather than being announced.
+    ///
+    /// Direction is inverted against the other charts because fewer beats per
+    /// mile is the better outcome.
+    static func effortTrend(
+        from runs: [RunWorkout],
+        scope: RunTrendScope,
+        unit: SpeedUnit,
+        referenceDate: Date = Date()
+    ) -> RunEffortTrend {
+        let lower = scope.lowerBound(from: referenceDate, calendar: calendar)
+        let scoped: [RunWorkout]
+        if let lower {
+            scoped = runs.filter { $0.startDate >= lower && $0.startDate <= referenceDate }
+        } else {
+            scoped = runs
+        }
+
+        let usable = scoped.filter { $0.duration > 0 && $0.distanceMeters > 0 }
+        let points = usable
+            .sorted { $0.startDate < $1.startDate }
+            .compactMap { run -> RunEffortPoint? in
+                guard let beats = run.beatsPerDistanceUnit(in: unit),
+                      let heartRate = run.avgHeartRate else { return nil }
+                let paceText = run.paceMinutes(in: unit)
+                    .flatMap { ConversionEngine.formatPace($0) } ?? "--"
+                return RunEffortPoint(
+                    id: run.id.uuidString,
+                    date: run.startDate,
+                    beats: beats,
+                    heartRate: heartRate,
+                    paceText: paceText,
+                    distanceValueText: String(format: "%.2f", run.distance(in: unit))
+                )
+            }
+
+        let values = points.map(\.beats)
+        let average = values.isEmpty ? 0 : values.reduce(0, +) / Double(values.count)
+
+        var fittedStart: Double?
+        var fittedEnd: Double?
+        var change = 0.0
+        var isClearTilt = false
+
+        if let fit = linearFit(dates: points.map(\.date), values: values) {
+            fittedStart = fit.start
+            fittedEnd = fit.end
+            change = fit.change
+            isClearTilt = fit.tStatistic >= 1
+        }
+
+        let direction: RunEffortTrendDirection
+        if points.count < 5 || fittedEnd == nil {
+            direction = .insufficient
+        } else {
+            // Steady band: ~4% of the average, with a floor so short easy runs
+            // do not tip the verdict on a handful of beats.
+            let band = max(average * 0.04, 5)
+            if abs(change) < band || isClearTilt == false {
+                direction = .steady
+            } else {
+                direction = change < 0 ? .improving : .declining
+            }
+        }
+
+        return RunEffortTrend(
+            points: points,
+            fittedStart: fittedStart,
+            fittedEnd: fittedEnd,
+            averageBeats: average,
+            changeOverPeriod: change,
+            direction: direction,
+            unit: unit,
+            runsWithoutHeartRate: usable.count - points.count
+        )
+    }
+
     /// One Speed Trend chart per named distance (5K, 10K, …): runs are bucketed
     /// by distance (±5% band) so each chart compares like-for-like efforts and
     /// the trend line isn't confounded by whether you ran short or long lately.

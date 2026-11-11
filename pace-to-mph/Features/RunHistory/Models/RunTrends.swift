@@ -103,3 +103,48 @@ struct RunDistanceTrend: Identifiable, Equatable {
 
     var id: String { target.id }
 }
+
+struct RunEffortPoint: Identifiable, Equatable {
+    let id: String
+    let date: Date
+    /// Heartbeats spent per mile/kilometre on this run.
+    let beats: Double
+    let heartRate: Int
+    let paceText: String
+    let distanceValueText: String
+
+    var beatsText: String { Int(beats.rounded()).formatted() }
+}
+
+/// Effort runs the opposite way to speed: fewer beats per mile is better, so a
+/// falling line is the good one.
+enum RunEffortTrendDirection: Equatable {
+    case improving
+    case steady
+    case declining
+    case insufficient
+}
+
+/// Heartbeats spent per mile/kilometre for every run in scope that recorded a
+/// heart rate, plus a least squares best-fit line. It pairs effort with output,
+/// so holding pace at a calmer heart rate shows up as progress where a plain
+/// speed chart would read as flat.
+struct RunEffortTrend: Equatable {
+    let points: [RunEffortPoint]
+    let fittedStart: Double?
+    let fittedEnd: Double?
+    let averageBeats: Double
+    let changeOverPeriod: Double
+    let direction: RunEffortTrendDirection
+    let unit: SpeedUnit
+    /// Runs in scope with no heart rate recorded, so the card can say what it
+    /// had to leave out rather than quietly plotting fewer runs than the user
+    /// knows they ran.
+    let runsWithoutHeartRate: Int
+
+    var hasData: Bool { points.isEmpty == false }
+    var runCount: Int { points.count }
+    var hasTrendLine: Bool { fittedStart != nil && fittedEnd != nil }
+    var averageBeatsText: String { Int(averageBeats.rounded()).formatted() }
+    var changeMagnitudeText: String { Int(abs(changeOverPeriod).rounded()).formatted() }
+}

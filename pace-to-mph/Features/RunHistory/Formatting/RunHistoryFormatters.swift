@@ -151,4 +151,7 @@ nonisolated enum RunHistoryFormatters {
 
 extension SpeedUnit {
     var distanceLabel: String { self == .mph ? "mi" : "km" }
+    var elevationLabel: String { self == .mph ? "ft" : "m" }
+    /// Unit for heartbeats spent covering one mile/kilometre.
+    var effortLabel: String { self == .mph ? "beats/mi" : "beats/km" }
 }

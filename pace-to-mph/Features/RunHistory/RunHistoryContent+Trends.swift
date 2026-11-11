@@ -60,6 +60,8 @@ extension RunHistoryContent {
             )
         case .distance:
             RunLengthTrendCard(trend: runLengthTrend, scope: selectedTrendScope, unit: unit)
+        case .effort:
+            EffortTrendCard(trend: effortTrend, scope: selectedTrendScope, unit: unit)
         }
     }
 

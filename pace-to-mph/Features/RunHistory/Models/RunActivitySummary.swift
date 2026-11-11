@@ -54,20 +54,34 @@ struct RunActivitySummary: Equatable {
         unit == .mph ? "mi" : "km"
     }
 
+    /// A comparison needs a prior period that actually held runs. Without one
+    /// the count still subtracts cleanly while distance and pace divide by
+    /// zero, so the card would show a lone "+4 vs prev" beside two blanks.
+    /// Every delta is gated on this so they appear and disappear together.
+    var hasComparableBaseline: Bool {
+        hasPreviousPeriod && previousRunCount > 0
+    }
+
+    /// True when a comparison was expected for this scope but the prior period
+    /// was empty, which is worth saying once rather than leaving three gaps.
+    var lacksBaselineForComparison: Bool {
+        hasPreviousPeriod && previousRunCount == 0
+    }
+
     var distanceDeltaPercent: Double? {
-        guard hasPreviousPeriod, previousDistance > 0 else { return nil }
+        guard hasComparableBaseline, previousDistance > 0 else { return nil }
         return (distance - previousDistance) / previousDistance
     }
 
     var runCountDelta: Int? {
-        guard hasPreviousPeriod else { return nil }
+        guard hasComparableBaseline else { return nil }
         return runCount - previousRunCount
     }
 
     /// Positive means the current pace is faster, matching the positive/green
     /// semantics used by the other comparison metrics.
     var paceImprovementPercent: Double? {
-        guard hasPreviousPeriod,
+        guard hasComparableBaseline,
               let current = averagePaceMinutes,
               let previous = previousAveragePaceMinutes,
               previous > 0 else { return nil }

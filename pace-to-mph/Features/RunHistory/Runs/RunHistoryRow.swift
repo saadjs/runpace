@@ -5,6 +5,8 @@ struct RunHistoryRow: View {
     let unit: SpeedUnit
     let prBadges: [RunPRBadge]
 
+    @State private var showsDetail = false
+
     private var speedText: String {
         let value = unit == .mph ? run.averageSpeedMph : run.averageSpeedKph
         return String(format: "%.2f", value)
@@ -24,6 +26,11 @@ struct RunHistoryRow: View {
 
     private var durationText: String {
         RunHistoryFormatters.duration(run.duration)
+    }
+
+    private var elevationText: String? {
+        guard let gain = run.elevationGain(in: unit) else { return nil }
+        return "\(Int(gain.rounded()).formatted()) \(unit.elevationLabel)"
     }
 
     private func headerLine(showsBadges: Bool) -> some View {
@@ -51,6 +58,10 @@ struct RunHistoryRow: View {
                 Text(unit.speedLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
         }
     }
@@ -61,34 +72,53 @@ struct RunHistoryRow: View {
         }
     }
 
-    private func metricsLine(font: Font) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Label(distanceText, systemImage: RunHistorySymbols.distance)
-                .font(font)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-                .fixedSize()
+    @ViewBuilder
+    private func metricItems(font: Font, showsElevation: Bool) -> some View {
+        Label(distanceText, systemImage: RunHistorySymbols.distance)
+            .font(font)
+            .foregroundStyle(.secondary)
+            .monospacedDigit()
+            .fixedSize()
 
-            Label("\(paceText) \(unit.paceLabel)", systemImage: RunHistorySymbols.pace)
-                .font(font)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-                .fixedSize()
+        Label("\(paceText) \(unit.paceLabel)", systemImage: RunHistorySymbols.pace)
+            .font(font)
+            .foregroundStyle(.secondary)
+            .monospacedDigit()
+            .fixedSize()
 
-            if let heartRate = run.avgHeartRate {
-                HStack(spacing: 3) {
-                    Image(systemName: RunHistorySymbols.heartRate)
-                        .imageScale(.small)
-                        .foregroundStyle(.pink)
-                    Text("\(heartRate)")
-                        .font(font)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-                .fixedSize()
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Average heart rate \(heartRate) beats per minute")
+        if let heartRate = run.avgHeartRate {
+            HStack(spacing: 3) {
+                Image(systemName: RunHistorySymbols.heartRate)
+                    .imageScale(.small)
+                    .foregroundStyle(.pink)
+                Text("\(heartRate)")
+                    .font(font)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
+            .fixedSize()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Average heart rate \(heartRate) beats per minute")
+        }
+
+        if showsElevation, let elevationText {
+            HStack(spacing: 3) {
+                Image(systemName: RunHistorySymbols.elevation)
+                    .imageScale(.small)
+                Text(elevationText)
+                    .font(font)
+                    .monospacedDigit()
+            }
+            .foregroundStyle(.secondary)
+            .fixedSize()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Elevation gain \(elevationText)")
+        }
+    }
+
+    private func metricsLine(font: Font, showsElevation: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            metricItems(font: font, showsElevation: showsElevation)
 
             Label(durationText, systemImage: RunHistorySymbols.duration)
                 .font(.footnote)
@@ -99,7 +129,36 @@ struct RunHistoryRow: View {
         }
     }
 
+    /// Last resort for the widest text sizes, where even the smallest font on
+    /// one line runs off the row. Wrapping keeps every metric readable instead
+    /// of letting the line overflow the card.
+    private var wrappedMetricsLine: some View {
+        FlowLayout(spacing: 10) {
+            metricItems(font: .caption, showsElevation: true)
+
+            Label(durationText, systemImage: RunHistorySymbols.duration)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .monospacedDigit()
+                .fixedSize()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     var body: some View {
+        Button {
+            showsDetail = true
+        } label: {
+            rowContent
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Shows the full detail for this run")
+        .sheet(isPresented: $showsDetail) {
+            RunDetailView(run: run, unit: unit, prBadges: prBadges)
+        }
+    }
+
+    private var rowContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             if prBadges.isEmpty {
                 headerLine(showsBadges: false)
@@ -117,15 +176,20 @@ struct RunHistoryRow: View {
                 }
             }
 
-            // Shrink the metrics font rather than truncating values on narrow rows.
+            // Shrink the metrics font rather than truncating values on narrow
+            // rows; drop elevation before shrinking further, and wrap only when
+            // nothing on one line fits.
             ViewThatFits(in: .horizontal) {
-                metricsLine(font: .subheadline)
-                metricsLine(font: .footnote)
-                metricsLine(font: .caption)
+                metricsLine(font: .subheadline, showsElevation: true)
+                metricsLine(font: .footnote, showsElevation: true)
+                metricsLine(font: .caption, showsElevation: true)
+                metricsLine(font: .caption, showsElevation: false)
+                wrappedMetricsLine
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
+        .contentShape(.rect)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Color(.separator))
